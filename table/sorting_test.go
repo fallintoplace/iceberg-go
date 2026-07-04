@@ -148,35 +148,10 @@ func TestSortOrderCheckCompatibilityRejectsInvalidSourceIDs(t *testing.T) {
 		iceberg.NestedField{ID: 19, Name: "id", Type: iceberg.PrimitiveTypes.Int64, Required: true},
 	)
 	for _, tt := range []struct {
-		name                string
-		jsonData            string
-		wantErr             string
-		wantInvalidSourceID bool
+		name     string
+		jsonData string
+		wantErr  string
 	}{
-		{
-			name:                "missing",
-			jsonData:            `{"order-id": 1, "fields": [{"transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			wantErr:             "source-ids must not be empty",
-			wantInvalidSourceID: true,
-		},
-		{
-			name:                "empty",
-			jsonData:            `{"order-id": 1, "fields": [{"source-ids": [], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			wantErr:             "source-ids must not be empty",
-			wantInvalidSourceID: true,
-		},
-		{
-			name:                "negative",
-			jsonData:            `{"order-id": 1, "fields": [{"source-id": -1, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			wantErr:             "source ID must be positive: -1",
-			wantInvalidSourceID: true,
-		},
-		{
-			name:                "zero",
-			jsonData:            `{"order-id": 1, "fields": [{"source-id": 0, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			wantErr:             "source ID must be positive: 0",
-			wantInvalidSourceID: true,
-		},
 		{
 			name:     "multi arg with nonexistent source id",
 			jsonData: `{"order-id": 1, "fields": [{"source-ids": [19, 999], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
@@ -190,9 +165,6 @@ func TestSortOrderCheckCompatibilityRejectsInvalidSourceIDs(t *testing.T) {
 			err := sortOrder.CheckCompatibility(schema)
 			require.Error(t, err)
 			assert.ErrorContains(t, err, tt.wantErr)
-			if tt.wantInvalidSourceID {
-				assert.ErrorIs(t, err, table.ErrInvalidSortSourceID)
-			}
 		})
 	}
 }
@@ -206,43 +178,39 @@ func TestUnmarshalSortOrderDefaults(t *testing.T) {
 	assert.Equal(t, table.InitialSortOrderID, order.OrderID())
 }
 
-func TestUnmarshalSortOrderAllowsLenientSourceIDs(t *testing.T) {
+func TestUnmarshalSortOrderRejectsInvalidSourceIDs(t *testing.T) {
 	for _, tt := range []struct {
-		name      string
-		jsonData  string
-		sourceIDs []int
+		name     string
+		jsonData string
+		wantErr  string
 	}{
 		{
-			name:      "missing",
-			jsonData:  `{"order-id": 1, "fields": [{"transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			sourceIDs: nil,
+			name:     "missing",
+			jsonData: `{"order-id": 1, "fields": [{"transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
+			wantErr:  "sort field must define source-id or source-ids",
 		},
 		{
-			name:      "zero",
-			jsonData:  `{"order-id": 1, "fields": [{"source-id": 0, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			sourceIDs: []int{0},
+			name:     "zero",
+			jsonData: `{"order-id": 1, "fields": [{"source-id": 0, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
+			wantErr:  "source ID must be positive: 0",
 		},
 		{
-			name:      "negative",
-			jsonData:  `{"order-id": 1, "fields": [{"source-id": -1, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			sourceIDs: []int{-1},
+			name:     "negative",
+			jsonData: `{"order-id": 1, "fields": [{"source-id": -1, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
+			wantErr:  "source ID must be positive: -1",
 		},
 		{
-			name:      "empty multi arg",
-			jsonData:  `{"order-id": 1, "fields": [{"source-ids": [], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
-			sourceIDs: []int{},
+			name:     "empty multi arg",
+			jsonData: `{"order-id": 1, "fields": [{"source-ids": [], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}]}`,
+			wantErr:  "source-ids must not be empty",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var order table.SortOrder
-			require.NoError(t, json.Unmarshal([]byte(tt.jsonData), &order))
-			require.Equal(t, 1, order.Len())
-
-			var field table.SortField
-			for _, sortField := range order.Fields() {
-				field = sortField
-			}
-			assert.Equal(t, tt.sourceIDs, field.SourceIDs)
+			err := json.Unmarshal([]byte(tt.jsonData), &order)
+			require.Error(t, err)
+			require.ErrorIs(t, err, table.ErrInvalidSortSourceID)
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
@@ -315,43 +283,44 @@ func TestSortFieldMultiArgSourceIDs(t *testing.T) {
 		assert.Contains(t, err.Error(), "cannot contain both source-id and source-ids")
 	})
 
-	t.Run("unmarshal allows source ids through parse", func(t *testing.T) {
+	t.Run("unmarshal rejects invalid source ids", func(t *testing.T) {
 		for _, tt := range []struct {
-			name      string
-			jsonData  string
-			sourceIDs []int
+			name     string
+			jsonData string
+			wantErr  string
 		}{
 			{
-				name:      "missing",
-				jsonData:  `{"transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
-				sourceIDs: nil,
+				name:     "missing",
+				jsonData: `{"transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
+				wantErr:  "sort field must define source-id or source-ids",
 			},
 			{
-				name:      "zero source-id",
-				jsonData:  `{"source-id": 0, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
-				sourceIDs: []int{0},
+				name:     "zero source-id",
+				jsonData: `{"source-id": 0, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
+				wantErr:  "source ID must be positive: 0",
 			},
 			{
-				name:      "negative source-id",
-				jsonData:  `{"source-id": -1, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
-				sourceIDs: []int{-1},
+				name:     "negative source-id",
+				jsonData: `{"source-id": -1, "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
+				wantErr:  "source ID must be positive: -1",
 			},
 			{
-				name:      "empty source-ids",
-				jsonData:  `{"source-ids": [], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
-				sourceIDs: []int{},
+				name:     "empty source-ids",
+				jsonData: `{"source-ids": [], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
+				wantErr:  "source-ids must not be empty",
 			},
 			{
-				name:      "source-ids with zero",
-				jsonData:  `{"source-ids": [1, 0], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
-				sourceIDs: []int{1, 0},
+				name:     "source-ids with zero",
+				jsonData: `{"source-ids": [1, 0], "transform": "identity", "direction": "asc", "null-order": "nulls-first"}`,
+				wantErr:  "source ID must be positive: 0",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				var field table.SortField
 				err := json.Unmarshal([]byte(tt.jsonData), &field)
-				require.NoError(t, err)
-				assert.Equal(t, tt.sourceIDs, field.SourceIDs)
+				require.Error(t, err)
+				require.ErrorIs(t, err, table.ErrInvalidSortSourceID)
+				require.ErrorContains(t, err, tt.wantErr)
 			})
 		}
 	})

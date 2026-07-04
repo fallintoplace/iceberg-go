@@ -156,11 +156,19 @@ func (s *SortField) UnmarshalJSON(b []byte) error {
 	s.NullOrder = aux.NullOrder
 
 	if hasSourceIDs {
+		if err := validateSortSourceIDs(aux.SourceIDs); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidSortSourceID, err)
+		}
+
 		s.SourceIDs = aux.SourceIDs
 	} else if hasSourceID {
+		if err := validateSortSourceID(aux.SourceID); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidSortSourceID, err)
+		}
+
 		s.SourceIDs = []int{aux.SourceID}
 	} else {
-		s.SourceIDs = nil
+		return fmt.Errorf("%w: sort field must define source-id or source-ids", ErrInvalidSortSourceID)
 	}
 
 	var err error
@@ -267,7 +275,7 @@ func (s *SortOrder) UnmarshalJSON(b []byte) error {
 		aux.OrderID = InitialSortOrderID
 	}
 
-	newOrder, err := newSortOrder(aux.OrderID, aux.Fields, false)
+	newOrder, err := newSortOrder(aux.OrderID, aux.Fields, true)
 	if err != nil {
 		return err
 	}
