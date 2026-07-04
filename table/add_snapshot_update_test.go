@@ -145,20 +145,21 @@ func TestAddSnapshotUpdate_ApplyRoutesThroughAddSnapshotUpdate(t *testing.T) {
 		"rebuildManifestList must survive Apply via the Update interface")
 }
 
-// TestAddSnapshotUpdate_NilNoOp verifies defensive handling: a nil update or
-// a nil-Snapshot update is a no-op rather than a panic. This mirrors the
-// behavior of AddSnapshot(nil) which existed before this refactor.
-func TestAddSnapshotUpdate_NilNoOp(t *testing.T) {
+// TestAddSnapshotUpdate_ApplyRejectsNilSnapshot verifies malformed add-snapshot
+// updates fail fast with a clear validation error.
+func TestAddSnapshotUpdate_ApplyRejectsNilSnapshot(t *testing.T) {
 	b := buildFromBase(t)
-	updatesBefore := len(b.updates)
 
-	require.NoError(t, b.AddSnapshotUpdate(nil),
-		"nil *addSnapshotUpdate must be a no-op")
-	require.NoError(t, b.AddSnapshotUpdate(&addSnapshotUpdate{}),
-		"update with nil Snapshot must be a no-op (matches AddSnapshot(nil))")
+	err := b.AddSnapshotUpdate(nil)
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	err = b.AddSnapshotUpdate(&addSnapshotUpdate{})
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	err = (&addSnapshotUpdate{}).Apply(b)
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	err = (&addSnapshotUpdate{}).Apply(buildFromBase(t))
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
 
-	assert.Equal(t, updatesBefore, len(b.updates),
-		"no-op calls must not append to builder.updates")
+	require.NoError(t, b.AddSnapshot(snapshotForApplyTest(104)))
 }
 
 // TestAddSnapshot_PreservedForNonRebuildCallers verifies that the existing
@@ -178,4 +179,10 @@ func TestAddSnapshot_PreservedForNonRebuildCallers(t *testing.T) {
 	assert.Equal(t, snap.SnapshotID, stored.Snapshot.SnapshotID)
 	assert.Nil(t, stored.rebuildManifestList,
 		"AddSnapshot path must produce updates with no rebuild closure")
+}
+
+func TestAddSnapshot_RejectsNilSnapshot(t *testing.T) {
+	b := buildFromBase(t)
+
+	require.ErrorIs(t, b.AddSnapshot(nil), iceberg.ErrInvalidArgument)
 }

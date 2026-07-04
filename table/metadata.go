@@ -417,6 +417,9 @@ func (b *MetadataBuilder) AddPartitionSpec(spec *iceberg.PartitionSpec, initial 
 }
 
 func (b *MetadataBuilder) AddSnapshot(snapshot *Snapshot) error {
+	if snapshot == nil {
+		return fmt.Errorf("%w: snapshot is required for add-snapshot", iceberg.ErrInvalidArgument)
+	}
 	return b.addSnapshotInternal(snapshot, nil)
 }
 
@@ -429,7 +432,10 @@ func (b *MetadataBuilder) AddSnapshot(snapshot *Snapshot) error {
 // constructs a default *addSnapshotUpdate internally.
 func (b *MetadataBuilder) AddSnapshotUpdate(u *addSnapshotUpdate) error {
 	if u == nil {
-		return nil
+		return fmt.Errorf("%w: snapshot update is required", iceberg.ErrInvalidArgument)
+	}
+	if u.Snapshot == nil {
+		return fmt.Errorf("%w: snapshot is required for add-snapshot updates", iceberg.ErrInvalidArgument)
 	}
 
 	return b.addSnapshotInternal(u.Snapshot, u)
@@ -441,7 +447,7 @@ func (b *MetadataBuilder) AddSnapshotUpdate(u *addSnapshotUpdate) error {
 // created via NewAddSnapshotUpdate.
 func (b *MetadataBuilder) addSnapshotInternal(snapshot *Snapshot, preserveUpdate *addSnapshotUpdate) error {
 	if snapshot == nil {
-		return nil
+		return fmt.Errorf("%w: snapshot is required for add-snapshot", iceberg.ErrInvalidArgument)
 	}
 
 	if len(b.schemaList) == 0 {

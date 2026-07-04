@@ -564,6 +564,18 @@ func TestUnmarshalUpdatesReplacesExistingSlice(t *testing.T) {
 	assert.Empty(t, updates)
 }
 
+func TestAddSnapshotUpdateMissingSnapshotApplyReturnsError(t *testing.T) {
+	var updates Updates
+
+	require.NoError(t, json.Unmarshal([]byte(`[{"action": "add-snapshot"}]`), &updates))
+	require.Len(t, updates, 1)
+
+	b := buildFromBase(t)
+	err := updates[0].Apply(b)
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	require.False(t, b.HasChanges())
+}
+
 // baseMetaJSON is a minimal valid V2 metadata document used by the Apply tests below.
 const baseMetaJSON = `{
   "format-version": 2,

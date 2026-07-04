@@ -346,6 +346,12 @@ func NewAddSnapshotUpdate(snapshot *Snapshot) *addSnapshotUpdate {
 // loop relies on these fields to regenerate the manifest list after an OCC
 // conflict.
 func (u *addSnapshotUpdate) Apply(builder *MetadataBuilder) error {
+	if u == nil {
+		return fmt.Errorf("%w: snapshot update is required", iceberg.ErrInvalidArgument)
+	}
+	if u.Snapshot == nil {
+		return fmt.Errorf("%w: snapshot is required for add-snapshot updates", iceberg.ErrInvalidArgument)
+	}
 	return builder.AddSnapshotUpdate(u)
 }
 
