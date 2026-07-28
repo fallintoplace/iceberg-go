@@ -1541,19 +1541,21 @@ func TestSanitizeColumnNamesHandlesMultibyteFirstRune(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		want string
+		name  string
+		input string
+		want  string
 	}{
-		{name: "éclair", want: "éclair"},
-		{name: "你好", want: "你好"},
-		{name: "Łacinka", want: "Łacinka"},
-		{name: "😀field", want: "_x1F600field"},
-		{name: "a😀field", want: "a_x1F600field"},
+		{name: "latin letter", input: "éclair", want: "éclair"},
+		{name: "CJK letters", input: "你好", want: "你好"},
+		{name: "extended latin letter", input: "Łacinka", want: "Łacinka"},
+		{name: "emoji first", input: "😀field", want: "_x1F600field"},
+		{name: "emoji later", input: "a😀field", want: "a_x1F600field"},
+		{name: "invalid UTF-8", input: string([]byte{0xff, 'a'}), want: "_xFFFDa"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			schema := iceberg.NewSchema(1, iceberg.NestedField{ID: 1, Name: test.name, Type: iceberg.PrimitiveTypes.String})
+			schema := iceberg.NewSchema(1, iceberg.NestedField{ID: 1, Name: test.input, Type: iceberg.PrimitiveTypes.String})
 			sanitized, err := iceberg.SanitizeColumnNames(schema)
 			require.NoError(t, err)
 			got := sanitized.Field(0).Name
