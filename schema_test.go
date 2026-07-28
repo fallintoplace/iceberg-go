@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/apache/iceberg-go"
 
@@ -1534,6 +1535,32 @@ func TestSanitizeColumnNamesEmptyFieldName(t *testing.T) {
 	_, err := iceberg.SanitizeColumnNames(sc)
 	assert.ErrorIs(t, err, iceberg.ErrInvalidSchema)
 	assert.ErrorContains(t, err, "field name cannot be empty")
+}
+
+func TestSanitizeColumnNamesHandlesMultibyteFirstRune(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "éclair", want: "éclair"},
+		{name: "你好", want: "你好"},
+		{name: "Łacinka", want: "Łacinka"},
+		{name: "😀field", want: "_x1F600field"},
+		{name: "a😀field", want: "a_x1F600field"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			schema := iceberg.NewSchema(1, iceberg.NestedField{ID: 1, Name: test.name, Type: iceberg.PrimitiveTypes.String})
+			sanitized, err := iceberg.SanitizeColumnNames(schema)
+			require.NoError(t, err)
+			got := sanitized.Field(0).Name
+			assert.True(t, utf8.ValidString(got))
+			assert.Equal(t, test.want, got)
+		})
+	}
 }
 
 func TestSchemaSelectCaseSensitiveSuccess(t *testing.T) {

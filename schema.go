@@ -1649,11 +1649,15 @@ func validAvroName(n string) bool {
 		return false
 	}
 
-	if !unicode.IsLetter(rune(n[0])) && n[0] != '_' {
-		return false
-	}
+	for i, r := range n {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return false
+			}
 
-	for _, r := range n[1:] {
+			continue
+		}
+
 		if !unicode.In(r, unicode.Number, unicode.Letter) && r != '_' {
 			return false
 		}
@@ -1678,15 +1682,13 @@ func sanitizeName(n string) string {
 	var b strings.Builder
 	b.Grow(len(n))
 
-	first := n[0]
-	if !unicode.IsLetter(rune(first)) && first != '_' {
-		b.WriteString(sanitize(rune(first)))
-	} else {
-		b.WriteByte(first)
-	}
+	for i, r := range n {
+		valid := unicode.In(r, unicode.Number, unicode.Letter) || r == '_'
+		if i == 0 {
+			valid = unicode.IsLetter(r) || r == '_'
+		}
 
-	for _, r := range n[1:] {
-		if !unicode.In(r, unicode.Number, unicode.Letter) && r != '_' {
+		if !valid {
 			b.WriteString(sanitize(r))
 		} else {
 			b.WriteRune(r)
