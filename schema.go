@@ -26,7 +26,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"unicode"
 )
 
 // Schema is an Iceberg table schema, represented as a struct with
@@ -1651,14 +1650,14 @@ func validAvroName(n string) bool {
 
 	for i, r := range n {
 		if i == 0 {
-			if !unicode.IsLetter(r) && r != '_' {
+			if !isAvroNameStart(r) {
 				return false
 			}
 
 			continue
 		}
 
-		if !unicode.In(r, unicode.Number, unicode.Letter) && r != '_' {
+		if !isAvroNamePart(r) {
 			return false
 		}
 	}
@@ -1666,8 +1665,16 @@ func validAvroName(n string) bool {
 	return true
 }
 
+func isAvroNameStart(r rune) bool {
+	return r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z'
+}
+
+func isAvroNamePart(r rune) bool {
+	return isAvroNameStart(r) || r >= '0' && r <= '9'
+}
+
 func sanitize(r rune) string {
-	if unicode.IsDigit(r) {
+	if r >= '0' && r <= '9' {
 		return "_" + string(r)
 	}
 
@@ -1683,9 +1690,9 @@ func sanitizeName(n string) string {
 	b.Grow(len(n))
 
 	for i, r := range n {
-		valid := unicode.In(r, unicode.Number, unicode.Letter) || r == '_'
+		valid := isAvroNamePart(r)
 		if i == 0 {
-			valid = unicode.IsLetter(r) || r == '_'
+			valid = isAvroNameStart(r)
 		}
 
 		if !valid {

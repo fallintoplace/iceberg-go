@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -1537,19 +1538,27 @@ func TestSanitizeColumnNamesEmptyFieldName(t *testing.T) {
 	assert.ErrorContains(t, err, "field name cannot be empty")
 }
 
-func TestSanitizeColumnNamesHandlesMultibyteFirstRune(t *testing.T) {
+func TestSanitizeColumnNamesProducesValidAvroNames(t *testing.T) {
 	t.Parallel()
+	avroName := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 	tests := []struct {
 		name  string
 		input string
 		want  string
 	}{
-		{name: "latin letter", input: "éclair", want: "éclair"},
-		{name: "CJK letters", input: "你好", want: "你好"},
-		{name: "extended latin letter", input: "Łacinka", want: "Łacinka"},
+		{name: "ASCII letter", input: "Field_9", want: "Field_9"},
+		{name: "underscore", input: "_field", want: "_field"},
+		{name: "ASCII digit first", input: "1field", want: "_1field"},
+		{name: "latin letter", input: "éclair", want: "_xE9clair"},
+		{name: "CJK letters", input: "你好", want: "_x4F60_x597D"},
+		{name: "extended latin letter", input: "Łacinka", want: "_x141acinka"},
+		{name: "Unicode digit first", input: "١field", want: "_x661field"},
+		{name: "Unicode digit later", input: "a١field", want: "a_x661field"},
 		{name: "emoji first", input: "😀field", want: "_x1F600field"},
 		{name: "emoji later", input: "a😀field", want: "a_x1F600field"},
+		{name: "punctuation first", input: "-field", want: "_x2Dfield"},
+		{name: "punctuation later", input: "a-field", want: "a_x2Dfield"},
 		{name: "invalid UTF-8", input: string([]byte{0xff, 'a'}), want: "_xFFFDa"},
 	}
 
@@ -1560,6 +1569,7 @@ func TestSanitizeColumnNamesHandlesMultibyteFirstRune(t *testing.T) {
 			require.NoError(t, err)
 			got := sanitized.Field(0).Name
 			assert.True(t, utf8.ValidString(got))
+			assert.Regexp(t, avroName, got)
 			assert.Equal(t, test.want, got)
 		})
 	}
