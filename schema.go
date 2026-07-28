@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 )
 
 // Schema is an Iceberg table schema, represented as a struct with
@@ -1727,6 +1728,9 @@ func (sanitizeColumnNameVisitor) Field(field NestedField, fieldResult NestedFiel
 	if field.Name == "" {
 		panic(fmt.Errorf("%w: field name cannot be empty", ErrInvalidSchema))
 	}
+	if !utf8.ValidString(field.Name) {
+		panic(fmt.Errorf("%w: field %d name is not valid UTF-8", ErrInvalidSchema, field.ID))
+	}
 
 	field.Name = makeCompatibleName(field.Name)
 
@@ -1734,6 +1738,16 @@ func (sanitizeColumnNameVisitor) Field(field NestedField, fieldResult NestedFiel
 }
 
 func (sanitizeColumnNameVisitor) Struct(_ StructType, fieldResults []NestedField) NestedField {
+	seen := make(map[string]int, len(fieldResults))
+	for _, field := range fieldResults {
+		if previousID, ok := seen[field.Name]; ok {
+			panic(fmt.Errorf(
+				"%w: fields %d and %d produce duplicate sanitized name %q",
+				ErrInvalidSchema, previousID, field.ID, field.Name))
+		}
+		seen[field.Name] = field.ID
+	}
+
 	return NestedField{Type: &StructType{FieldList: fieldResults}}
 }
 

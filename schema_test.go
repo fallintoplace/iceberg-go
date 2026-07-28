@@ -1559,7 +1559,6 @@ func TestSanitizeColumnNamesProducesValidAvroNames(t *testing.T) {
 		{name: "emoji later", input: "a😀field", want: "a_x1F600field"},
 		{name: "punctuation first", input: "-field", want: "_x2Dfield"},
 		{name: "punctuation later", input: "a-field", want: "a_x2Dfield"},
-		{name: "invalid UTF-8", input: string([]byte{0xff, 'a'}), want: "_xFFFDa"},
 	}
 
 	for _, test := range tests {
@@ -1573,6 +1572,92 @@ func TestSanitizeColumnNamesProducesValidAvroNames(t *testing.T) {
 			assert.Equal(t, test.want, got)
 		})
 	}
+}
+
+func TestSanitizeColumnNamesRejectsCollisions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		fields []iceberg.NestedField
+		want   string
+	}{
+		{
+			name: "non-ASCII escape collides with existing name",
+			fields: []iceberg.NestedField{
+				{ID: 1, Name: "aé", Type: iceberg.PrimitiveTypes.String},
+				{ID: 2, Name: "a_xE9", Type: iceberg.PrimitiveTypes.String},
+			},
+			want: `fields 1 and 2 produce duplicate sanitized name "a_xE9"`,
+		},
+		{
+			name: "emoji escape collides with existing name",
+			fields: []iceberg.NestedField{
+				{ID: 3, Name: "😀", Type: iceberg.PrimitiveTypes.String},
+				{ID: 4, Name: "_x1F600", Type: iceberg.PrimitiveTypes.String},
+			},
+			want: `fields 3 and 4 produce duplicate sanitized name "_x1F600"`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := iceberg.SanitizeColumnNames(iceberg.NewSchema(1, test.fields...))
+			require.ErrorIs(t, err, iceberg.ErrInvalidSchema)
+			assert.ErrorContains(t, err, test.want)
+		})
+	}
+}
+
+func TestSanitizeColumnNamesScopesCollisionChecksToStruct(t *testing.T) {
+	t.Parallel()
+
+	schema := iceberg.NewSchema(1,
+		iceberg.NestedField{
+			ID: 1, Name: "customer", Type: &iceberg.StructType{FieldList: []iceberg.NestedField{
+				{ID: 2, Name: "aé", Type: iceberg.PrimitiveTypes.String},
+			}},
+		},
+		iceberg.NestedField{
+			ID: 3, Name: "address", Type: &iceberg.StructType{FieldList: []iceberg.NestedField{
+				{ID: 4, Name: "a_xE9", Type: iceberg.PrimitiveTypes.String},
+			}},
+		},
+	)
+
+	sanitized, err := iceberg.SanitizeColumnNames(schema)
+	require.NoError(t, err)
+	assert.Equal(t, "a_xE9", sanitized.Field(0).Type.(*iceberg.StructType).FieldList[0].Name)
+	assert.Equal(t, "a_xE9", sanitized.Field(1).Type.(*iceberg.StructType).FieldList[0].Name)
+}
+
+func TestSanitizeColumnNamesRejectsNestedCollision(t *testing.T) {
+	t.Parallel()
+
+	schema := iceberg.NewSchema(1, iceberg.NestedField{
+		ID: 1, Name: "record", Type: &iceberg.StructType{FieldList: []iceberg.NestedField{
+			{ID: 2, Name: "aé", Type: iceberg.PrimitiveTypes.String},
+			{ID: 3, Name: "a_xE9", Type: iceberg.PrimitiveTypes.String},
+		}},
+	})
+
+	_, err := iceberg.SanitizeColumnNames(schema)
+	require.ErrorIs(t, err, iceberg.ErrInvalidSchema)
+	assert.ErrorContains(t, err, `fields 2 and 3 produce duplicate sanitized name "a_xE9"`)
+}
+
+func TestSanitizeColumnNamesRejectsInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	schema := iceberg.NewSchema(1, iceberg.NestedField{
+		ID: 7, Name: string([]byte{0xff, 'a'}), Type: iceberg.PrimitiveTypes.String,
+	})
+
+	_, err := iceberg.SanitizeColumnNames(schema)
+	require.ErrorIs(t, err, iceberg.ErrInvalidSchema)
+	assert.ErrorContains(t, err, "field 7 name is not valid UTF-8")
 }
 
 func TestSchemaSelectCaseSensitiveSuccess(t *testing.T) {
