@@ -1668,16 +1668,18 @@ func validAvroName(n string) bool {
 	return true
 }
 
+const maxBMPRune rune = 0xFFFF
+
 func isAvroNameStart(r rune) bool {
-	return r <= '\uFFFF' && (r == '_' || unicode.IsLetter(r))
+	return r <= maxBMPRune && (r == '_' || unicode.IsLetter(r))
 }
 
 func isAvroNamePart(r rune) bool {
-	return r <= '\uFFFF' && (isAvroNameStart(r) || unicode.IsDigit(r))
+	return r <= maxBMPRune && (isAvroNameStart(r) || unicode.IsDigit(r))
 }
 
 func sanitize(r rune) string {
-	if r > '\uFFFF' {
+	if r > maxBMPRune {
 		high, low := utf16.EncodeRune(r)
 
 		return fmt.Sprintf("_x%X_x%X", high, low)
@@ -1696,7 +1698,7 @@ func sanitizeName(n string) string {
 	}
 
 	var b strings.Builder
-	b.Grow(len(n))
+	b.Grow(len(n) * 3)
 
 	for i, r := range n {
 		valid := isAvroNamePart(r)
@@ -1714,6 +1716,14 @@ func sanitizeName(n string) string {
 	return b.String()
 }
 
+// SanitizeColumnNames returns a copy of sc whose field names are compatible
+// with Java Iceberg's Avro name sanitization. Characters outside the BMP are
+// escaped as UTF-16 surrogate pairs, and only Unicode decimal digits are
+// treated as digits; other numeric categories are escaped.
+//
+// Empty or invalid UTF-8 field names and names that collide after sanitization
+// return an error wrapping ErrInvalidSchema. Collision errors are reported here
+// before a downstream Avro schema builder encounters the duplicate field name.
 func SanitizeColumnNames(sc *Schema) (*Schema, error) {
 	result, err := Visit(sc, sanitizeColumnNameVisitor{})
 	if err != nil {
