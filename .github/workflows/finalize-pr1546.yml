@@ -1,0 +1,91 @@
+name: Finalize PR 1546 review fix
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Publish run ID
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context=chatgpt/finalize-pr1546 \
+            -f description="${GITHUB_RUN_ID}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.8'
+          cache: true
+
+      - name: Apply, test, and push reviewed fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          readonly branch='fix/bound-set-literal-copies'
+          readonly original='0e648ac1b0654321ea4bc07989bbf3167e61841b'
+
+          git config user.name 'Hoang Minh Vu'
+          git config user.email 'vuhoangminh97@gmail.com'
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+
+          current="$(git rev-parse "refs/remotes/origin/${branch}")"
+          git merge-base --is-ancestor "${original}" "${current}"
+          unexpected="$(git diff --name-only "${original}..${current}" -- | grep -Ev '^\.github/(review-fixes/|workflows/(stage-reviewed-fixes|apply-pr1546-review-fix)\.yml$)' || true)"
+          if [[ -n "${unexpected}" ]]; then
+            echo 'Refusing to replace a branch containing non-automation changes:' >&2
+            echo "${unexpected}" >&2
+            exit 1
+          fi
+
+          git show "${current}:.github/review-fixes/patches.tar.gz.b64" > /tmp/patches.tar.gz.b64
+          mkdir -p /tmp/review-fixes
+          base64 --decode /tmp/patches.tar.gz.b64 | tar -xz -C /tmp/review-fixes
+
+          git checkout --detach "${original}"
+          git am --3way /tmp/review-fixes/1546.patch
+          git diff --check "${original}..HEAD"
+          go test . -count=1
+
+          fixed_sha="$(git rev-parse HEAD)"
+          git push --force-with-lease="refs/heads/${branch}:${current}" origin "${fixed_sha}:refs/heads/${branch}"
+          echo "fixed_sha=${fixed_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context=chatgpt/finalize-pr1546 \
+            -f description="${GITHUB_RUN_ID}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Publish failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=failure \
+            -f context=chatgpt/finalize-pr1546 \
+            -f description="${GITHUB_RUN_ID}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
