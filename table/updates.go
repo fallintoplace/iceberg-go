@@ -79,6 +79,10 @@ func (u *Updates) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	var updates Updates
+	if len(rawUpdates) > 0 {
+		updates = make(Updates, 0, len(rawUpdates))
+	}
 	for _, raw := range rawUpdates {
 		var base baseUpdate
 		if err := json.Unmarshal(raw, &base); err != nil {
@@ -140,8 +144,10 @@ func (u *Updates) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(raw, upd); err != nil {
 			return err
 		}
-		*u = append(*u, upd)
+		updates = append(updates, upd)
 	}
+
+	*u = updates
 
 	return nil
 }
@@ -340,6 +346,12 @@ func NewAddSnapshotUpdate(snapshot *Snapshot) *addSnapshotUpdate {
 // loop relies on these fields to regenerate the manifest list after an OCC
 // conflict.
 func (u *addSnapshotUpdate) Apply(builder *MetadataBuilder) error {
+	if u == nil {
+		return fmt.Errorf("%w: snapshot update is required", iceberg.ErrInvalidArgument)
+	}
+	if u.Snapshot == nil {
+		return fmt.Errorf("%w: snapshot is required for add-snapshot updates", iceberg.ErrInvalidArgument)
+	}
 	return builder.AddSnapshotUpdate(u)
 }
 
