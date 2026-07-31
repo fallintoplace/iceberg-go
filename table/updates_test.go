@@ -540,6 +540,30 @@ func TestUnmarshalUpdates(t *testing.T) {
 	}
 }
 
+func TestUnmarshalUpdatesReplacesExistingSlice(t *testing.T) {
+	var updates Updates
+	require.NoError(t, json.Unmarshal([]byte(`[
+		{"action": "set-location", "location": "s3://bucket/old-location"}
+	]`), &updates))
+
+	require.NoError(t, json.Unmarshal([]byte(`[
+		{"action": "set-properties", "updates": {"key": "value"}}
+	]`), &updates))
+	require.Len(t, updates, 1)
+	assert.Equal(t, UpdateSetProperties, updates[0].Action())
+
+	previous := append(Updates(nil), updates...)
+	err := json.Unmarshal([]byte(`[
+		{"action": "set-location", "location": "s3://bucket/new-location"},
+		{"action": "unknown-action"}
+	]`), &updates)
+	require.Error(t, err)
+	assert.Equal(t, previous, updates)
+
+	require.NoError(t, json.Unmarshal([]byte(`[]`), &updates))
+	assert.Empty(t, updates)
+}
+
 // baseMetaJSON is a minimal valid V2 metadata document used by the Apply tests below.
 const baseMetaJSON = `{
   "format-version": 2,
@@ -567,6 +591,19 @@ func buildFromBase(t *testing.T) *MetadataBuilder {
 	require.NoError(t, err)
 
 	return b
+}
+
+func TestAssignUUIDUpdate_ApplyRejectsNilUUID(t *testing.T) {
+	b := buildFromBase(t)
+	originalUUID := b.uuid
+
+	err := NewAssignUUIDUpdate(uuid.Nil).Apply(b)
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	require.False(t, b.HasChanges())
+
+	meta, err := b.Build()
+	require.NoError(t, err)
+	require.Equal(t, originalUUID, meta.TableUUID())
 }
 
 func TestSetStatisticsUpdate_Unmarshal(t *testing.T) {
@@ -845,6 +882,37 @@ func TestAddEncryptionKeyUpdate_Apply_RejectsV2(t *testing.T) {
 	err := NewAddEncryptionKeyUpdate(key).Apply(b)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "format version 3")
+}
+
+func TestAddEncryptionKeyUpdate_Apply_RejectsMissingKeyID(t *testing.T) {
+	b := buildFromBaseV3(t)
+	key := EncryptionKey{KeyID: "", EncryptedKeyMetadata: "dGVzdA=="}
+
+	err := NewAddEncryptionKeyUpdate(key).Apply(b)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	assert.Contains(t, err.Error(), "key-id")
+}
+
+func TestAddEncryptionKeyUpdate_Apply_RejectsMissingEncryptedKeyMetadata(t *testing.T) {
+	b := buildFromBaseV3(t)
+	key := EncryptionKey{KeyID: "my-key", EncryptedKeyMetadata: ""}
+
+	err := NewAddEncryptionKeyUpdate(key).Apply(b)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, iceberg.ErrInvalidArgument)
+	assert.Contains(t, err.Error(), "metadata")
+}
+
+func TestAddEncryptionKeyUpdate_UnmarshalMissingFields_ApplyRejects(t *testing.T) {
+	data := []byte(`[{"action":"add-encryption-key","encryption-key":{"key-id":"my-key"}}]`)
+
+	var updates Updates
+	require.NoError(t, json.Unmarshal(data, &updates))
+	require.Len(t, updates, 1)
+
+	err := updates[0].Apply(buildFromBaseV3(t))
+	require.ErrorIs(t, err, iceberg.ErrInvalidArgument)
 }
 
 func TestRemoveEncryptionKeyUpdate_Unmarshal(t *testing.T) {
