@@ -759,6 +759,293 @@ func TestRejectsStoredPartitionSpecWithoutID(t *testing.T) {
 	assert.ErrorContains(t, err, "missing required spec-id")
 }
 
+func TestRejectsZeroSourceIDsInPersistedMetadata(t *testing.T) {
+	v1Historical, err := os.ReadFile(path.Join("testdata", "TableMetadataV1PartitionSpecsWithoutDefaultId.json"))
+	require.NoError(t, err)
+
+	zeroPartitionField := func() map[string]any {
+		return map[string]any{
+			"name":      "historical",
+			"transform": "identity",
+			"source-id": json.Number("0"),
+			"field-id":  json.Number("1001"),
+		}
+	}
+	zeroSortField := func() map[string]any {
+		return map[string]any{
+			"transform":  "identity",
+			"source-id":  json.Number("0"),
+			"direction":  "asc",
+			"null-order": "nulls-first",
+		}
+	}
+
+	tests := []struct {
+		name       string
+		raw        string
+		mutate     func(map[string]any)
+		errIs      error
+		errMessage string
+	}{
+		{
+			name: "v1 default partition spec",
+			raw:  ExampleTableMetadataV1,
+			mutate: func(metadata map[string]any) {
+				metadata["partition-spec"].([]any)[0].(map[string]any)["source-id"] = json.Number("0")
+			},
+			errIs:      iceberg.ErrInvalidPartitionSpec,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v1 historical partition spec",
+			raw:  string(v1Historical),
+			mutate: func(metadata map[string]any) {
+				metadata["partition-specs"].([]any)[0].(map[string]any)["fields"].([]any)[0].(map[string]any)["source-id"] = json.Number("0")
+			},
+			errIs:      iceberg.ErrInvalidPartitionSpec,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v2 default partition spec",
+			raw:  ExampleTableMetadataV2,
+			mutate: func(metadata map[string]any) {
+				metadata["partition-specs"].([]any)[0].(map[string]any)["fields"].([]any)[0].(map[string]any)["source-id"] = json.Number("0")
+			},
+			errIs:      iceberg.ErrInvalidPartitionSpec,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v2 historical partition spec",
+			raw:  ExampleTableMetadataV2,
+			mutate: func(metadata map[string]any) {
+				specs := metadata["partition-specs"].([]any)
+				metadata["partition-specs"] = append(slices.Clone(specs), map[string]any{
+					"spec-id": json.Number("1"),
+					"fields":  []any{zeroPartitionField()},
+				})
+			},
+			errIs:      iceberg.ErrInvalidPartitionSpec,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v3 default partition spec",
+			raw:  ExampleTableMetadataV3,
+			mutate: func(metadata map[string]any) {
+				metadata["partition-specs"].([]any)[0].(map[string]any)["fields"].([]any)[0].(map[string]any)["source-id"] = json.Number("0")
+			},
+			errIs:      iceberg.ErrInvalidPartitionSpec,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v3 historical partition spec",
+			raw:  ExampleTableMetadataV3,
+			mutate: func(metadata map[string]any) {
+				specs := metadata["partition-specs"].([]any)
+				metadata["partition-specs"] = append(slices.Clone(specs), map[string]any{
+					"spec-id": json.Number("1"),
+					"fields":  []any{zeroPartitionField()},
+				})
+			},
+			errIs:      iceberg.ErrInvalidPartitionSpec,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v1 default sort order",
+			raw:  ExampleTableMetadataV1,
+			mutate: func(metadata map[string]any) {
+				metadata["default-sort-order-id"] = json.Number("1")
+				metadata["sort-orders"] = []any{map[string]any{
+					"order-id": json.Number("1"),
+					"fields":   []any{zeroSortField()},
+				}}
+			},
+			errIs:      ErrInvalidSortSourceID,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v1 historical sort order",
+			raw:  ExampleTableMetadataV1,
+			mutate: func(metadata map[string]any) {
+				metadata["default-sort-order-id"] = json.Number("1")
+				metadata["sort-orders"] = []any{
+					map[string]any{"order-id": json.Number("1"), "fields": []any{}},
+					map[string]any{"order-id": json.Number("2"), "fields": []any{zeroSortField()}},
+				}
+			},
+			errIs:      ErrInvalidSortSourceID,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v2 default sort order",
+			raw:  ExampleTableMetadataV2,
+			mutate: func(metadata map[string]any) {
+				metadata["sort-orders"].([]any)[0].(map[string]any)["fields"].([]any)[0].(map[string]any)["source-id"] = json.Number("0")
+			},
+			errIs:      ErrInvalidSortSourceID,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v2 historical sort order",
+			raw:  ExampleTableMetadataV2,
+			mutate: func(metadata map[string]any) {
+				orders := metadata["sort-orders"].([]any)
+				metadata["sort-orders"] = append(slices.Clone(orders), map[string]any{
+					"order-id": json.Number("4"),
+					"fields":   []any{zeroSortField()},
+				})
+			},
+			errIs:      ErrInvalidSortSourceID,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v3 default sort order",
+			raw:  ExampleTableMetadataV3,
+			mutate: func(metadata map[string]any) {
+				metadata["sort-orders"].([]any)[0].(map[string]any)["fields"].([]any)[0].(map[string]any)["source-id"] = json.Number("0")
+			},
+			errIs:      ErrInvalidSortSourceID,
+			errMessage: "source ID must be positive: 0",
+		},
+		{
+			name: "v3 historical sort order",
+			raw:  ExampleTableMetadataV3,
+			mutate: func(metadata map[string]any) {
+				orders := metadata["sort-orders"].([]any)
+				metadata["sort-orders"] = append(slices.Clone(orders), map[string]any{
+					"order-id": json.Number("4"),
+					"fields":   []any{zeroSortField()},
+				})
+			},
+			errIs:      ErrInvalidSortSourceID,
+			errMessage: "source ID must be positive: 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := json.NewDecoder(strings.NewReader(tt.raw))
+			decoder.UseNumber()
+			var metadata map[string]any
+			require.NoError(t, decoder.Decode(&metadata))
+			tt.mutate(metadata)
+
+			data, err := json.Marshal(metadata)
+			require.NoError(t, err)
+
+			_, err = ParseMetadataBytes(data)
+			require.ErrorIs(t, err, tt.errIs)
+			assert.ErrorContains(t, err, tt.errMessage)
+		})
+	}
+}
+
+func TestNewMetadataFromOrdinalNumberedRequest(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		requestSchema     string
+		wantPartitionID   int
+		wantPartitionName string
+		wantSortID        int
+	}{
+		{
+			name: "schema IDs in field order",
+			requestSchema: `{
+				"type": "struct", "schema-id": 0,
+				"fields": [
+					{"id": 0, "name": "my_ints", "required": false, "type": "int"},
+					{"id": 1, "name": "my_floats", "required": false, "type": "double"},
+					{"id": 2, "name": "strings", "required": false, "type": "string"}
+				]
+			}`,
+			wantPartitionID:   1,
+			wantPartitionName: "my_ints",
+			wantSortID:        3,
+		},
+		{
+			name: "shuffled schema IDs",
+			requestSchema: `{
+				"type": "struct", "schema-id": 0,
+				"fields": [
+					{"id": 2, "name": "strings", "required": false, "type": "string"},
+					{"id": 0, "name": "my_ints", "required": false, "type": "int"},
+					{"id": 1, "name": "my_floats", "required": false, "type": "double"}
+				]
+			}`,
+			wantPartitionID:   2,
+			wantPartitionName: "my_ints",
+			wantSortID:        1,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema iceberg.Schema
+			require.NoError(t, json.Unmarshal([]byte(tt.requestSchema), &schema))
+
+			var unboundSpec iceberg.UnboundPartitionSpec
+			require.NoError(t, json.Unmarshal([]byte(`{
+				"spec-id": 0,
+				"fields": [{"name":"my_ints","transform":"identity","source-id":0,"field-id":1000}]
+			}`), &unboundSpec))
+
+			var unboundOrder UnboundSortOrder
+			require.NoError(t, json.Unmarshal([]byte(`{
+				"order-id": 1,
+				"fields": [{"transform":"identity","source-id":2,"direction":"asc","null-order":"nulls-first"}]
+			}`), &unboundOrder))
+
+			meta, err := NewMetadata(&schema, &unboundSpec.PartitionSpec, unboundOrder.SortOrder, "s3://bucket/tbl", nil)
+			require.NoError(t, err)
+
+			gotSpec := meta.PartitionSpec()
+			require.Equal(t, 1, gotSpec.NumFields())
+			assert.Equal(t, tt.wantPartitionID, gotSpec.Field(0).SourceID())
+			assert.Equal(t, tt.wantPartitionName, gotSpec.Field(0).Name)
+
+			gotOrder := meta.SortOrder()
+			require.Equal(t, 1, gotOrder.Len())
+			assert.Equal(t, tt.wantSortID, gotOrder.Field(0).SourceID())
+
+			for _, field := range gotSpec.Fields() {
+				assert.Greater(t, field.SourceID(), 0)
+			}
+			for _, field := range gotOrder.Fields() {
+				assert.Greater(t, field.SourceID(), 0)
+			}
+
+			data, err := json.Marshal(meta)
+			require.NoError(t, err)
+			assert.NotContains(t, string(data), `"source-id":0`)
+
+			reparsed, err := ParseMetadataBytes(data)
+			require.NoError(t, err)
+			reparsedSpec := reparsed.PartitionSpec()
+			assert.Equal(t, tt.wantPartitionID, reparsedSpec.Field(0).SourceID())
+			require.Equal(t, 1, reparsed.SortOrder().Len())
+			assert.Equal(t, tt.wantSortID, reparsed.SortOrder().Field(0).SourceID())
+		})
+	}
+}
+
+func TestNewMetadataRejectsDuplicateTemporarySchemaFieldIDs(t *testing.T) {
+	var schema iceberg.Schema
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "struct", "schema-id": 0,
+		"fields": [
+			{"id": 0, "name": "first", "required": false, "type": "int"},
+			{"id": 0, "name": "second", "required": false, "type": "int"}
+		]
+	}`), &schema))
+
+	var unboundSpec iceberg.UnboundPartitionSpec
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"spec-id": 0,
+		"fields": [{"name":"first","transform":"identity","source-id":0,"field-id":1000}]
+	}`), &unboundSpec))
+
+	_, err := NewMetadata(&schema, &unboundSpec.PartitionSpec, UnsortedSortOrder, "s3://bucket/tbl", nil)
+	require.ErrorIs(t, err, iceberg.ErrInvalidSchema)
+	assert.ErrorContains(t, err, "duplicate temporary field ID 0")
+}
+
 func TestSortOrderNotFound(t *testing.T) {
 	metadataSortOrderNotFound := `{
         "format-version": 2,

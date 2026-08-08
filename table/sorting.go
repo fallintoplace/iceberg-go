@@ -18,6 +18,7 @@
 package table
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/json"
 	"errors"
@@ -132,6 +133,10 @@ func (s SortField) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SortField) UnmarshalJSON(b []byte) error {
+	return s.unmarshalJSON(b, false)
+}
+
+func (s *SortField) unmarshalJSON(b []byte, allowZeroSourceID bool) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return fmt.Errorf("%w: failed to unmarshal sort field", err)
@@ -141,6 +146,9 @@ func (s *SortField) UnmarshalJSON(b []byte) error {
 	_, hasSourceIDs := raw["source-ids"]
 	if hasSourceID && hasSourceIDs {
 		return errors.New("sort field cannot contain both source-id and source-ids")
+	}
+	if hasSourceID && bytes.Equal(bytes.TrimSpace(raw["source-id"]), []byte("null")) {
+		return fmt.Errorf("%w: source ID cannot be null", ErrInvalidSortSourceID)
 	}
 	if !hasSourceID && !hasSourceIDs {
 		return fmt.Errorf("%w: exactly one of source-id or source-ids is required", ErrInvalidSortSourceID)
@@ -162,35 +170,39 @@ func (s *SortField) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	s.Direction = aux.Direction
-	s.NullOrder = aux.NullOrder
-
-	if hasSourceIDs {
-		s.SourceIDs = aux.SourceIDs
-	} else {
-		s.SourceIDs = []int{aux.SourceID}
+	decoded := SortField{
+		Direction: aux.Direction,
+		NullOrder: aux.NullOrder,
 	}
 
-	if err := validateSortSourceIDs(s.SourceIDs); err != nil {
+	if hasSourceIDs {
+		decoded.SourceIDs = aux.SourceIDs
+	} else {
+		decoded.SourceIDs = []int{aux.SourceID}
+	}
+
+	if err := validateSortSourceIDs(decoded.SourceIDs, allowZeroSourceID); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidSortSourceID, err)
 	}
 
 	var err error
-	if s.Transform, err = iceberg.ParseTransform(aux.TransformString); err != nil {
+	if decoded.Transform, err = iceberg.ParseTransform(aux.TransformString); err != nil {
 		return err
 	}
 
-	switch s.Direction {
+	switch decoded.Direction {
 	case SortASC, SortDESC:
 	default:
 		return ErrInvalidSortDirection
 	}
 
-	switch s.NullOrder {
+	switch decoded.NullOrder {
 	case NullsFirst, NullsLast:
 	default:
 		return ErrInvalidNullOrder
 	}
+
+	*s = decoded
 
 	return nil
 }
@@ -203,12 +215,20 @@ func validateSortSourceID(id int) error {
 	return nil
 }
 
-func validateSortSourceIDs(ids []int) error {
+func validateSortSourceIDs(ids []int, allowZeroSourceID bool) error {
 	if len(ids) == 0 {
 		return errors.New("source-ids must not be empty")
 	}
 
 	for _, id := range ids {
+		if allowZeroSourceID {
+			if id < 0 {
+				return fmt.Errorf("source ID must be non-negative: %d", id)
+			}
+
+			continue
+		}
+
 		if err := validateSortSourceID(id); err != nil {
 			return err
 		}
@@ -233,6 +253,14 @@ var UnsortedSortOrder = SortOrder{orderID: UnsortedSortOrderID, fields: []SortFi
 type SortOrder struct {
 	orderID int
 	fields  []SortField
+}
+
+// UnboundSortOrder is a request-only wrapper for sort orders whose source IDs
+// are client-provided ordinal placeholders. It accepts source ID 0 while
+// decoding; callers must bind the embedded order to a schema before storing or
+// using it as table metadata.
+type UnboundSortOrder struct {
+	SortOrder
 }
 
 func (s SortOrder) OrderID() int {
@@ -273,18 +301,22 @@ func (s SortOrder) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SortOrder) UnmarshalJSON(b []byte) error {
+	return s.unmarshalJSON(b, false)
+}
+
+func (s *SortOrder) unmarshalJSON(b []byte, allowZeroSourceID bool) error {
 	type Alias struct {
-		OrderID int         `json:"order-id"`
-		Fields  []SortField `json:"fields"`
+		OrderID int               `json:"order-id"`
+		Fields  []json.RawMessage `json:"fields"`
 	}
-	aux := Alias{-1, nil}
+	aux := Alias{OrderID: -1}
 
 	if err := json.Unmarshal(b, &aux); err != nil {
 		return err
 	}
 
 	if len(aux.Fields) == 0 && aux.OrderID == -1 {
-		aux.Fields = []SortField{}
+		aux.Fields = []json.RawMessage{}
 		aux.OrderID = 0
 	}
 
@@ -292,12 +324,32 @@ func (s *SortOrder) UnmarshalJSON(b []byte) error {
 		aux.OrderID = InitialSortOrderID
 	}
 
-	newOrder, err := newSortOrder(aux.OrderID, aux.Fields, false)
+	fields := make([]SortField, len(aux.Fields))
+	for i, rawField := range aux.Fields {
+		if err := fields[i].unmarshalJSON(rawField, allowZeroSourceID); err != nil {
+			return fmt.Errorf("sort field at index %d: %w", i, err)
+		}
+	}
+
+	newOrder, err := newSortOrder(aux.OrderID, fields, false)
 	if err != nil {
 		return err
 	}
 
 	*s = newOrder
+
+	return nil
+}
+
+// UnmarshalJSON decodes an unbound sort order from a create-table request,
+// allowing ordinal source ID 0 while retaining all other validation.
+func (s *UnboundSortOrder) UnmarshalJSON(b []byte) error {
+	var decoded SortOrder
+	if err := decoded.unmarshalJSON(b, true); err != nil {
+		return err
+	}
+
+	s.SortOrder = decoded
 
 	return nil
 }
@@ -341,7 +393,7 @@ func newSortOrder(orderID int, fields []SortField, validateSourceIDs bool) (Sort
 			return SortOrder{}, fmt.Errorf("%w: sort field at index %d", ErrInvalidNullOrder, idx)
 		}
 		if validateSourceIDs {
-			if err := validateSortSourceIDs(field.SourceIDs); err != nil {
+			if err := validateSortSourceIDs(field.SourceIDs, false); err != nil {
 				return SortOrder{}, fmt.Errorf("%w: sort field at index %d has invalid source IDs: %v",
 					ErrInvalidSortSourceID, idx, err)
 			}
@@ -388,7 +440,7 @@ func (s *SortOrder) CheckCompatibility(schema *iceberg.Schema) error {
 			return fmt.Errorf("%w: sort field with source id %d has no transform", ErrInvalidTransform, field.SourceID())
 		}
 
-		if err := validateSortSourceIDs(field.SourceIDs); err != nil {
+		if err := validateSortSourceIDs(field.SourceIDs, false); err != nil {
 			return fmt.Errorf("%w: sort field has invalid source IDs: %v", ErrInvalidSortSourceID, err)
 		}
 

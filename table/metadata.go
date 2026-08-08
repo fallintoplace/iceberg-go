@@ -2789,6 +2789,10 @@ func NewMetadataWithUUID(sc *iceberg.Schema, partitions *iceberg.PartitionSpec, 
 	// silently remapped and later resolve to the wrong physical column against
 	// Java-written files (see #1107). This is stricter than Java, which relies
 	// on assignFreshIds to remap them; rejecting is the safer contract here.
+	if err := rejectDuplicateTemporaryFieldIDs(sc); err != nil {
+		return nil, err
+	}
+
 	if err := validateNoReservedFieldIDs(sc); err != nil {
 		return nil, err
 	}

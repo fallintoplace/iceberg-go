@@ -113,6 +113,10 @@ func (p *PartitionField) String() string {
 }
 
 func (p *PartitionField) UnmarshalJSON(b []byte) error {
+	return p.unmarshalJSON(b, false)
+}
+
+func (p *PartitionField) unmarshalJSON(b []byte, allowZeroSourceID bool) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return fmt.Errorf("%w: failed to unmarshal partition field", err)
@@ -125,6 +129,9 @@ func (p *PartitionField) UnmarshalJSON(b []byte) error {
 	}
 	_, hasSourceID := raw["source-id"]
 	_, hasSourceIDs := raw["source-ids"]
+	if hasSourceID && bytes.Equal(bytes.TrimSpace(raw["source-id"]), []byte("null")) {
+		return fmt.Errorf("%w: partition source ID cannot be null", ErrInvalidPartitionSpec)
+	}
 
 	if tf, ok := raw["transform"]; !ok || string(tf) == "null" {
 		return fmt.Errorf("%w: partition field requires a transform", ErrInvalidTransform)
@@ -142,14 +149,13 @@ func (p *PartitionField) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	p.FieldID = aux.FieldID
-	p.Name = aux.Name
+	decoded := PartitionField{FieldID: aux.FieldID, Name: aux.Name}
 
 	var err error
-	if p.Transform, err = ParseTransform(aux.TransformString); err != nil {
+	if decoded.Transform, err = ParseTransform(aux.TransformString); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidPartitionSpec, err)
 	}
-	if err := validateTransform(p.Transform); err != nil {
+	if err := validateTransform(decoded.Transform); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidPartitionSpec, err)
 	}
 
@@ -157,25 +163,32 @@ func (p *PartitionField) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("%w: partition source-ids cannot be empty", ErrInvalidPartitionSpec)
 	}
 	if !hasSourceID && !hasSourceIDs {
-		if _, isVoid := p.Transform.(VoidTransform); !isVoid {
+		if _, isVoid := decoded.Transform.(VoidTransform); !isVoid {
 			return fmt.Errorf("%w: partition field requires source-id or source-ids", ErrInvalidPartitionSpec)
 		}
 		// Preserve compatibility with historical source-less void tombstones.
-		p.SourceIDs = []int{0}
+		decoded.SourceIDs = []int{0}
 	} else if len(aux.SourceIDs) > 0 {
-		p.SourceIDs = aux.SourceIDs
+		decoded.SourceIDs = aux.SourceIDs
 	} else {
-		p.SourceIDs = []int{aux.SourceID}
+		decoded.SourceIDs = []int{aux.SourceID}
 	}
-	for _, sourceID := range p.SourceIDs {
-		_, isVoid := p.Transform.(VoidTransform)
-		if sourceID <= 0 && (!isVoid || hasSourceID || hasSourceIDs) {
+
+	_, isVoid := decoded.Transform.(VoidTransform)
+	for _, sourceID := range decoded.SourceIDs {
+		if sourceID < 0 || (!allowZeroSourceID && sourceID == 0 && (!isVoid || hasSourceID || hasSourceIDs)) {
+			if allowZeroSourceID {
+				return fmt.Errorf("%w: partition source ID must be non-negative: %d", ErrInvalidPartitionSpec, sourceID)
+			}
+
 			return fmt.Errorf("%w: partition source ID must be positive: %d", ErrInvalidPartitionSpec, sourceID)
 		}
 	}
-	if p.Name == "" {
+	if decoded.Name == "" {
 		return fmt.Errorf("%w: partition name cannot be empty", ErrInvalidPartitionSpec)
 	}
+
+	*p = decoded
 
 	return nil
 }
@@ -188,6 +201,14 @@ type PartitionSpec struct {
 
 	// this is populated by initialize after creation
 	sourceIdToFields map[int][]PartitionField
+}
+
+// UnboundPartitionSpec is a request-only wrapper for partition specs whose
+// source IDs are client-provided ordinal placeholders. It accepts source ID 0
+// while decoding; callers must bind the embedded spec to a schema before
+// storing or using it as table metadata.
+type UnboundPartitionSpec struct {
+	PartitionSpec
 }
 
 type PartitionOption func(*PartitionSpec) error
@@ -467,6 +488,10 @@ func (ps PartitionSpec) MarshalJSON() ([]byte, error) {
 }
 
 func (ps *PartitionSpec) UnmarshalJSON(b []byte) error {
+	return ps.unmarshalJSON(b, false)
+}
+
+func (ps *PartitionSpec) unmarshalJSON(b []byte, allowZeroSourceID bool) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return fmt.Errorf("%w: invalid partition spec JSON: %w", ErrInvalidPartitionSpec, err)
@@ -509,7 +534,7 @@ func (ps *PartitionSpec) UnmarshalJSON(b []byte) error {
 				return fmt.Errorf("%w: partition field ID cannot be null", ErrInvalidPartitionSpec)
 			}
 		}
-		if err := json.Unmarshal(rawField, &fields[i]); err != nil {
+		if err := fields[i].unmarshalJSON(rawField, allowZeroSourceID); err != nil {
 			return fmt.Errorf("%w: invalid partition field: %w", ErrInvalidPartitionSpec, err)
 		}
 	}
@@ -523,6 +548,19 @@ func (ps *PartitionSpec) UnmarshalJSON(b []byte) error {
 	}
 	decoded.initialize()
 	*ps = decoded
+
+	return nil
+}
+
+// UnmarshalJSON decodes an unbound partition spec from a create-table
+// request, allowing ordinal source ID 0 while retaining all other validation.
+func (ps *UnboundPartitionSpec) UnmarshalJSON(b []byte) error {
+	var decoded PartitionSpec
+	if err := decoded.unmarshalJSON(b, true); err != nil {
+		return err
+	}
+
+	ps.PartitionSpec = decoded
 
 	return nil
 }

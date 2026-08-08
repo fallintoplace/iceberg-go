@@ -222,6 +222,45 @@ func validateNoReservedFieldIDs(sc *iceberg.Schema) error {
 	return nil
 }
 
+type temporaryFieldIDChecker struct {
+	seen map[int]string
+	err  error
+}
+
+func (c *temporaryFieldIDChecker) Schema(_ *iceberg.Schema, _ struct{}) struct{} { return struct{}{} }
+func (c *temporaryFieldIDChecker) Struct(_ iceberg.StructType, _ []struct{}) struct{} {
+	return struct{}{}
+}
+func (c *temporaryFieldIDChecker) Field(field iceberg.NestedField, _ struct{}) struct{} {
+	if field.ID > 0 {
+		return struct{}{}
+	}
+
+	if previous, ok := c.seen[field.ID]; ok && c.err == nil {
+		c.err = fmt.Errorf("%w: duplicate temporary field ID %d for fields %q and %q",
+			iceberg.ErrInvalidSchema, field.ID, previous, field.Name)
+	} else {
+		c.seen[field.ID] = field.Name
+	}
+
+	return struct{}{}
+}
+func (c *temporaryFieldIDChecker) List(_ iceberg.ListType, _ struct{}) struct{} { return struct{}{} }
+func (c *temporaryFieldIDChecker) Map(_ iceberg.MapType, _, _ struct{}) struct{} {
+	return struct{}{}
+}
+func (c *temporaryFieldIDChecker) Primitive(_ iceberg.PrimitiveType) struct{} { return struct{}{} }
+func (c *temporaryFieldIDChecker) Variant(_ iceberg.VariantType) struct{}     { return struct{}{} }
+
+func rejectDuplicateTemporaryFieldIDs(sc *iceberg.Schema) error {
+	checker := &temporaryFieldIDChecker{seen: make(map[int]string)}
+	if _, err := iceberg.Visit(sc, checker); err != nil {
+		return fmt.Errorf("%w: failed to enumerate schema fields: %w", iceberg.ErrInvalidSchema, err)
+	}
+
+	return checker.err
+}
+
 // minFormatVersionForType returns the minimum table format version required
 // for the given type. Returns 1 for types supported in all versions, or a higher
 // version number for types that require newer format versions.

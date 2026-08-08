@@ -795,6 +795,11 @@ func TestPartitionSpecUnmarshalRejectsInvalidStructure(t *testing.T) {
 			message: "source ID must be positive",
 		},
 		{
+			name:    "negative source ID",
+			data:    `{"spec-id":0,"fields":[{"source-id":-1,"field-id":1000,"name":"part","transform":"identity"}]}`,
+			message: "source ID must be positive",
+		},
+		{
 			name:    "empty source IDs",
 			data:    `{"spec-id":0,"fields":[{"source-ids":[],"field-id":1000,"name":"part","transform":"identity"}]}`,
 			message: "source-ids cannot be empty",
@@ -842,4 +847,27 @@ func TestPartitionSpecUnmarshalAllowsRepeatedVoidTransforms(t *testing.T) {
 	var spec iceberg.PartitionSpec
 	require.NoError(t, json.Unmarshal([]byte(data), &spec))
 	assert.Equal(t, 2, spec.NumFields())
+}
+
+// The persisted partition spec decoder remains strict. Request payloads use
+// UnboundPartitionSpec when source IDs are client ordinal placeholders.
+func TestPartitionSpecUnmarshalRejectsZeroSourceID(t *testing.T) {
+	data := `{"spec-id":0,"fields":[{"source-id":0,"field-id":1000,"name":"my_ints","transform":"identity"}]}`
+
+	var spec iceberg.PartitionSpec
+	err := json.Unmarshal([]byte(data), &spec)
+	require.ErrorIs(t, err, iceberg.ErrInvalidPartitionSpec)
+	assert.ErrorContains(t, err, "source ID must be positive: 0")
+}
+
+func TestUnboundPartitionSpecUnmarshalAcceptsZeroSourceID(t *testing.T) {
+	data := `{"spec-id":0,"fields":[{"source-id":0,"field-id":1000,"name":"my_ints","transform":"identity"}]}`
+
+	var spec iceberg.UnboundPartitionSpec
+	require.NoError(t, json.Unmarshal([]byte(data), &spec))
+	assert.Equal(t, 0, spec.Field(0).SourceID())
+
+	roundTripped, err := json.Marshal(spec)
+	require.NoError(t, err)
+	assert.JSONEq(t, data, string(roundTripped))
 }
