@@ -247,6 +247,19 @@ func TestLazyDeletionVectorLoaderReadPath(t *testing.T) {
 		assert.Contains(t, err.Error(), "multiple deletion vectors for data file")
 	})
 
+	t.Run("same puffin path and offset with different sizes are rejected", func(t *testing.T) {
+		const dataFilePath = "file:///table/data/data-005.parquet"
+		puffinPath, offset, length, card := writeDVPuffinFixture(t, []uint64{5}, dataFilePath)
+		first := newDVMockDataFile(puffinPath, dataFilePath, offset, length, card)
+		second := newDVMockDataFile(puffinPath, dataFilePath, offset, length+1, card)
+
+		_, err := newLazyDeletionVectorLoader(fs, []FileScanTask{{DeletionVectorFiles: []iceberg.DataFile{
+			first, second,
+		}}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "multiple deletion vectors for data file")
+	})
+
 	t.Run("nil referenced_data_file is rejected before loading", func(t *testing.T) {
 		broken := &dvMockDataFile{
 			mockDataFile: mockDataFile{
