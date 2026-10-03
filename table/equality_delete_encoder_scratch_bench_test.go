@@ -38,7 +38,7 @@ import (
 
 func BenchmarkReadEqualityDeleteFileBatchSizes(b *testing.B) {
 	const numRows = 65_536
-	for _, numColumns := range []int{1, 2, 4} {
+	for _, numColumns := range []int{1, 2, 4, 8} {
 		b.Run(fmt.Sprintf("columns=%d", numColumns), func(b *testing.B) {
 			fields := make([]iceberg.NestedField, numColumns)
 			fieldIDs := make([]int, numColumns)
