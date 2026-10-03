@@ -847,6 +847,7 @@ func readEqualityDeleteFile(ctx context.Context, fs iceio.IO, tableSchema *icebe
 
 	keys = make(set[string])
 	var keyBuf bytes.Buffer
+	encoders := make([]colEncoder, len(fieldRefs))
 
 	for recRdr.Next() {
 		if err := ctx.Err(); err != nil {
@@ -854,7 +855,6 @@ func readEqualityDeleteFile(ctx context.Context, fs iceio.IO, tableSchema *icebe
 		}
 
 		rec := recRdr.RecordBatch()
-		encoders := make([]colEncoder, len(fieldRefs))
 		for i, ref := range fieldRefs {
 			encoders[i], err = makeArrowFieldEncoder(rec, ref, fieldIDs[i], colNames[i], dataFile.FilePath())
 			if err != nil {
