@@ -83,18 +83,11 @@ func inspectPartitionHistoricalSnapshotTable(
 	require.NoError(t, err)
 	fs := iceio.NewMemFS()
 
-	fileBuilder, err := iceberg.NewDataFileBuilder(
-		spec,
-		iceberg.EntryContentData,
+	dataFile := newTestDataFile(
+		t, spec,
 		"mem://snapshot-history/table/data/file.parquet",
-		iceberg.ParquetFile,
 		map[int]any{1000: int32(7)},
-		nil,
-		nil,
-		1,
-		1,
 	)
-	require.NoError(t, err)
 
 	historicalSequence := int64(1)
 	currentSequence := int64(2)
@@ -114,7 +107,7 @@ func inspectPartitionHistoricalSnapshotTable(
 			&historicalSnapshotID,
 			&historicalSequence,
 			&historicalSequence,
-			fileBuilder.Build(),
+			dataFile,
 		)},
 	)
 	require.NoError(t, err)
