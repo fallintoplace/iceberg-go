@@ -1050,6 +1050,18 @@ func bufString(buf *bytes.Buffer) string {
 	return unsafe.String(unsafe.SliceData(b), len(b))
 }
 
+const equalityDeleteNullKey = "\x00"
+
+func containsInt64EqualityDeleteKey(keys set[string], value int64) bool {
+	var key [9]byte
+	key[0] = 1
+	binary.BigEndian.PutUint64(key[1:], uint64(value))
+
+	_, found := keys[unsafe.String(&key[0], len(key))]
+
+	return found
+}
+
 // encodeArrowValue writes a single Arrow value to the buffer for key
 // encoding. Values are type-tagged and length-prefixed for variable-length
 // types to avoid hash collisions.
@@ -1289,9 +1301,9 @@ func makeColEncoder(arr arrow.Array) colEncoder {
 }
 
 // processEqualityDeletesColumnarForFile resolves field paths once per file and
-// typed column encoders once per batch, then iterates rows without per-row type
-// switches. Each delete set is applied independently because sets may have
-// different field IDs.
+// uses fixed-width fast paths when possible, otherwise resolving typed column
+// encoders once per batch. Each delete set is applied independently because sets
+// may have different field IDs.
 func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*equalityDeleteSet, fileSchema *iceberg.Schema, dataFilePath string) (recProcessFn, error) {
 	requestedFieldIDs := make([]int, 0)
 	requestedFieldIDSet := make(map[int]struct{})
@@ -1311,6 +1323,7 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 
 	fieldRefsByID := resolveArrowFieldsByID(fileSchema, requestedFieldIDs)
 	fieldRefs := make([][]arrowFieldRef, len(eqDeleteSets))
+	int64FastPaths := make([]bool, len(eqDeleteSets))
 	for i, eqDel := range eqDeleteSets {
 		fieldRefs[i] = make([]arrowFieldRef, len(eqDel.fieldIDs))
 		for fieldIdx, fieldID := range eqDel.fieldIDs {
@@ -1320,6 +1333,11 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 			}
 
 			fieldRefs[i][fieldIdx] = ref
+		}
+
+		if len(eqDel.fieldIDs) == 1 && len(fieldRefs[i][0].path) == 1 {
+			field, found := fileSchema.FindFieldByID(eqDel.fieldIDs[0])
+			int64FastPaths[i] = found && field.Type.Equals(iceberg.PrimitiveTypes.Int64)
 		}
 	}
 
@@ -1335,6 +1353,54 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 		var keyBuf bytes.Buffer
 
 		for setIdx, eqDel := range eqDeleteSets {
+			if int64FastPaths[setIdx] {
+				column, err := arrowArrayAtField(
+					r, fieldRefs[setIdx][0], eqDel.fieldIDs[0], eqDel.colNames[0], dataFilePath)
+				if err != nil {
+					return nil, err
+				}
+
+				if values, ok := column.(*array.Int64); ok {
+					rawValues := values.Int64Values()
+					hasNulls := values.NullN() > 0
+					deletesNull := false
+					if hasNulls {
+						_, deletesNull = eqDel.keys[equalityDeleteNullKey]
+					}
+
+					for row, value := range rawValues {
+						if maskBytes != nil && !bitutil.BitIsSet(maskBytes, row) {
+							continue
+						}
+
+						deleted := false
+						if hasNulls && values.IsNull(row) {
+							deleted = deletesNull
+						} else {
+							deleted = containsInt64EqualityDeleteKey(eqDel.keys, value)
+						}
+						if !deleted {
+							continue
+						}
+
+						if maskBuf == nil {
+							maskBuf = memory.NewResizableBuffer(mem)
+							defer maskBuf.Release()
+							maskBuf.Resize(int(bitutil.BytesForBits(int64(numRows))))
+							maskBytes = maskBuf.Bytes()
+
+							for i := range maskBytes {
+								maskBytes[i] = 0xFF
+							}
+						}
+
+						bitutil.ClearBit(maskBytes, row)
+					}
+
+					continue
+				}
+			}
+
 			encoders := make([]colEncoder, len(eqDel.colNames))
 			for i, name := range eqDel.colNames {
 				var err error

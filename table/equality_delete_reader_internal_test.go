@@ -864,6 +864,42 @@ func TestProcessEqualityDeletesReturnsOriginalBatchWhenNoRowsMatch(t *testing.T)
 	result.Release()
 }
 
+func TestProcessEqualityDeletesInt64FastPathPreservesNullSemantics(t *testing.T) {
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer mem.AssertSize(t, 0)
+	ctx := compute.WithAllocator(t.Context(), mem)
+
+	builder := array.NewInt64Builder(mem)
+	builder.AppendNull()
+	builder.AppendValues([]int64{-1, 0, 1}, nil)
+	values := builder.NewArray()
+	builder.Release()
+
+	schema := arrow.NewSchema([]arrow.Field{{
+		Name: "id", Type: arrow.PrimitiveTypes.Int64,
+	}}, nil)
+	record := array.NewRecordBatch(schema, []arrow.Array{values}, 4)
+	values.Release()
+
+	fileSchema := iceberg.NewSchema(0,
+		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int64},
+	)
+	deleteSet := int64EqualityDeleteSet(-1)
+	deleteSet.keys[equalityDeleteNullKey] = struct{}{}
+	process, err := processEqualityDeletesColumnarForFile(
+		ctx, []*equalityDeleteSet{deleteSet}, fileSchema, "data.parquet")
+	require.NoError(t, err)
+
+	result, err := process(record)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), result.NumRows())
+	resultValues := result.Column(0).(*array.Int64)
+	assert.False(t, resultValues.IsNull(0))
+	assert.Equal(t, int64(0), resultValues.Value(0))
+	assert.Equal(t, int64(1), resultValues.Value(1))
+	result.Release()
+}
+
 func int64EqualityDeleteSet(values ...int64) *equalityDeleteSet {
 	keys := make(set[string], len(values))
 	for _, value := range values {

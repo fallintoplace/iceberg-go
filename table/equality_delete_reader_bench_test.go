@@ -390,6 +390,62 @@ func benchEqDeletesForFile(
 	}
 }
 
+func benchSingleInt64FileSchema() *iceberg.Schema {
+	return iceberg.NewSchema(0,
+		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int64},
+	)
+}
+
+func buildBenchRecordSingleInt64(mem memory.Allocator, numRows int) arrow.RecordBatch {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+
+	bldr := array.NewRecordBuilder(mem, schema)
+	defer bldr.Release()
+
+	idBldr := bldr.Field(0).(*array.Int64Builder)
+	for i := range numRows {
+		idBldr.Append(int64(i))
+	}
+
+	return bldr.NewRecordBatch()
+}
+
+func buildBenchDeleteSetSingleInt64(numDeletes int) *equalityDeleteSet {
+	keys := make(set[string], numDeletes)
+	var buf bytes.Buffer
+	for i := range numDeletes {
+		buf.Reset()
+		buf.WriteByte(1)
+		bufPutUint64(&buf, uint64(i*3))
+		keys[buf.String()] = struct{}{}
+	}
+
+	return &equalityDeleteSet{
+		keys:     keys,
+		fieldIDs: []int{1},
+		colNames: []string{"id"},
+	}
+}
+
+func buildBenchDeleteSetSingleInt64NoMatch(numDeletes int) *equalityDeleteSet {
+	keys := make(set[string], numDeletes)
+	var buf bytes.Buffer
+	for i := range numDeletes {
+		buf.Reset()
+		buf.WriteByte(1)
+		bufPutUint64(&buf, uint64(-int64(i)-1))
+		keys[buf.String()] = struct{}{}
+	}
+
+	return &equalityDeleteSet{
+		keys:     keys,
+		fieldIDs: []int{1},
+		colNames: []string{"id"},
+	}
+}
+
 func benchIntFileSchema() *iceberg.Schema {
 	return iceberg.NewSchema(0,
 		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int64},
@@ -526,6 +582,16 @@ func buildBenchDeleteSetStringNoMatch(numDeletes int) *equalityDeleteSet {
 		fieldIDs: []int{1, 2},
 		colNames: []string{"id", "name"},
 	}
+}
+
+func BenchmarkProcessEqualityDeletesSingleInt64(b *testing.B) {
+	benchEqDeletes(
+		b, buildBenchRecordSingleInt64, buildBenchDeleteSetSingleInt64, benchSingleInt64FileSchema())
+}
+
+func BenchmarkProcessEqualityDeletesNoMatchSingleInt64(b *testing.B) {
+	benchEqDeletesForFile(
+		b, buildBenchRecordSingleInt64, buildBenchDeleteSetSingleInt64NoMatch, benchSingleInt64FileSchema())
 }
 
 func BenchmarkProcessEqualityDeletesInt(b *testing.B) {
