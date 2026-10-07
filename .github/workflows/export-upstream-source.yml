@@ -30,15 +30,15 @@ jobs:
         working-directory: source
         run: go test ./table -run '^$'
 
-      - name: Package module cache
+      - name: Package module download cache
         shell: bash
         run: |
           modcache="$(go env GOMODCACHE)"
-          tar -C "$(dirname "$modcache")" -czf /tmp/gomodcache-go1.26.3.tar.gz "$(basename "$modcache")"
+          tar -C "$modcache" -czf /tmp/gomod-download-cache-go1.26.3.tar.gz cache/download
 
-      - name: Upload module cache
+      - name: Upload module download cache
         uses: actions/upload-artifact@v4
         with:
-          name: gomodcache-go1.26.3
-          path: /tmp/gomodcache-go1.26.3.tar.gz
+          name: gomod-download-cache-go1.26.3
+          path: /tmp/gomod-download-cache-go1.26.3.tar.gz
           retention-days: 1
