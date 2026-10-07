@@ -1,4 +1,4 @@
-name: Export upstream source
+name: Export benchmark dependencies
 
 on:
   push:
@@ -20,27 +20,25 @@ jobs:
           fetch-depth: 0
           path: source
 
-      - name: Upload source
-        uses: actions/upload-artifact@v4
-        with:
-          name: iceberg-go-main
-          path: source
-          include-hidden-files: true
-          retention-days: 1
-
       - name: Install Go 1.26.3
         uses: actions/setup-go@v6
         with:
           go-version: '1.26.3'
           cache: false
 
-      - name: Package Go toolchain
-        shell: bash
-        run: tar -C "$(dirname "$(go env GOROOT)")" -czf /tmp/go1.26.3.linux-amd64.tar.gz "$(basename "$(go env GOROOT)")"
+      - name: Warm table dependencies
+        working-directory: source
+        run: go test ./table -run '^$'
 
-      - name: Upload Go toolchain
+      - name: Package module cache
+        shell: bash
+        run: |
+          modcache="$(go env GOMODCACHE)"
+          tar -C "$(dirname "$modcache")" -czf /tmp/gomodcache-go1.26.3.tar.gz "$(basename "$modcache")"
+
+      - name: Upload module cache
         uses: actions/upload-artifact@v4
         with:
-          name: go-1.26.3-linux-amd64
-          path: /tmp/go1.26.3.linux-amd64.tar.gz
+          name: gomodcache-go1.26.3
+          path: /tmp/gomodcache-go1.26.3.tar.gz
           retention-days: 1
