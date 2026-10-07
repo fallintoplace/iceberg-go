@@ -530,6 +530,68 @@ func TestPositionalDeleteIndexRejectsUnsupportedPartitionValue(t *testing.T) {
 	assert.ErrorContains(t, err, "partition field 1000")
 }
 
+func TestPositionalDeleteIndexPathRangeComponentsPreserveSequenceOrder(t *testing.T) {
+	deleteEntries := []iceberg.ManifestEntry{
+		newPositionalDeleteIndexTestEntryWithBounds(
+			"bounded-7.parquet", 0, nil, 7, nil, "data-a.parquet", "data-z.parquet"),
+		newPositionalDeleteIndexTestEntry(
+			"fallback-6.parquet", 0, nil, 6, nil, ""),
+		newPositionalDeleteIndexTestEntryWithBounds(
+			"unrelated-5.parquet", 0, nil, 5, nil, "zz-data.parquet", "zzzz-data.parquet"),
+		newPositionalDeleteIndexTestEntryWithBounds(
+			"bounded-5.parquet", 0, nil, 5, nil, "data-a.parquet", "data-p.parquet"),
+		newPositionalDeleteIndexTestEntry(
+			"fallback-5.parquet", 0, nil, 5, nil, ""),
+	}
+
+	idx, err := buildPositionalDeleteIndex(deleteEntries)
+	require.NoError(t, err)
+
+	partitionKey, err := canonicalPartitionKey(0, nil)
+	require.NoError(t, err)
+	bucket := idx.byPartition[partitionKey]
+	require.NotNil(t, bucket)
+	require.Len(t, bucket.pathRanges, 2)
+	require.Len(t, bucket.fallbackIndexes, 2)
+
+	matched, err := idx.forDataFile(newPositionalDeleteIndexDataEntry(
+		"data-m.parquet", 0, nil, 5))
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"bounded-5.parquet",
+		"fallback-5.parquet",
+		"fallback-6.parquet",
+		"bounded-7.parquet",
+	}, positionalDeletePaths(matched))
+}
+
+func TestPositionalDeleteIndexDensePathRangesUseSuffixScan(t *testing.T) {
+	deleteEntries := []iceberg.ManifestEntry{
+		newPositionalDeleteIndexTestEntryWithBounds(
+			"wide.parquet", 0, nil, 5, nil, "data-a.parquet", "data-z.parquet"),
+		newPositionalDeleteIndexTestEntryWithBounds(
+			"middle.parquet", 0, nil, 6, nil, "data-g.parquet", "data-t.parquet"),
+		newPositionalDeleteIndexTestEntryWithBounds(
+			"inner.parquet", 0, nil, 7, nil, "data-k.parquet", "data-p.parquet"),
+	}
+
+	idx, err := buildPositionalDeleteIndex(deleteEntries)
+	require.NoError(t, err)
+
+	partitionKey, err := canonicalPartitionKey(0, nil)
+	require.NoError(t, err)
+	bucket := idx.byPartition[partitionKey]
+	require.NotNil(t, bucket)
+	assert.Empty(t, bucket.pathRanges)
+	assert.Empty(t, bucket.fallbackIndexes)
+
+	matched, err := idx.forDataFile(newPositionalDeleteIndexDataEntry(
+		"data-m.parquet", 0, nil, 5))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"wide.parquet", "middle.parquet", "inner.parquet"},
+		positionalDeletePaths(matched))
+}
+
 func positionalDeletePaths(files []iceberg.DataFile) []string {
 	paths := make([]string, len(files))
 	for i, file := range files {
