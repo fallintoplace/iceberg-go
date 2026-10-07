@@ -1,0 +1,29 @@
+name: Export upstream source
+
+on:
+  push:
+    branches:
+      - tmp/export-upstream-main-20261007
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upstream main
+        uses: actions/checkout@v4
+        with:
+          repository: apache/iceberg-go
+          ref: main
+          fetch-depth: 0
+          path: source
+
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: iceberg-go-main
+          path: source
+          include-hidden-files: true
+          retention-days: 1
