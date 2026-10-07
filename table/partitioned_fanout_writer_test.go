@@ -351,6 +351,40 @@ func (s *FanoutWriterTestSuite) TestBinaryPartitionValuesUseComparableKeys() {
 	}
 }
 
+func (s *FanoutWriterTestSuite) TestPartitionMapUsesBinaryKeysAtEveryLevel() {
+	arrowSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "first", Type: arrow.BinaryTypes.Binary},
+		{Name: "second", Type: arrow.BinaryTypes.Binary},
+	}, nil)
+	record := s.createCustomTestRecord(arrowSchema, [][]any{
+		{[]byte("a"), []byte("x")},
+		{[]byte("a"), []byte("x")},
+		{[]byte("a"), []byte("y")},
+		{[]byte("b"), []byte("x")},
+		{[]byte("b"), []byte("x")},
+	})
+	defer record.Release()
+
+	icebergSchema := iceberg.NewSchema(1,
+		iceberg.NestedField{ID: 1, Name: "first", Type: iceberg.PrimitiveTypes.Binary},
+		iceberg.NestedField{ID: 2, Name: "second", Type: iceberg.PrimitiveTypes.Binary},
+	)
+	spec := iceberg.NewPartitionSpec(
+		iceberg.PartitionField{SourceIDs: []int{1}, FieldID: 1000, Name: "first", Transform: iceberg.IdentityTransform{}},
+		iceberg.PartitionField{SourceIDs: []int{2}, FieldID: 1001, Name: "second", Transform: iceberg.IdentityTransform{}},
+	)
+
+	partitions, err := getRecordPartitions(spec, icebergSchema, record)
+	s.Require().NoError(err)
+	s.Require().Len(partitions, 3)
+
+	rowsByPartition := make([][]int64, 0, len(partitions))
+	for _, partition := range partitions {
+		rowsByPartition = append(rowsByPartition, partition.rows)
+	}
+	s.ElementsMatch([][]int64{{0, 1}, {2}, {3, 4}}, rowsByPartition)
+}
+
 func (s *FanoutWriterTestSuite) TestNaNPartitionValuesUseStableKeys() {
 	arrowSchema := arrow.NewSchema([]arrow.Field{{Name: "part", Type: arrow.PrimitiveTypes.Float64}}, nil)
 	record := s.createCustomTestRecord(arrowSchema, [][]any{{math.NaN()}, {math.NaN()}})

@@ -659,15 +659,48 @@ func bindPartitionTransform(transform iceberg.Transform, sourceType iceberg.Type
 // The value is either a *partitionMapNode or a *partitionInfo.
 type partitionMapNode struct {
 	children map[any]any
+	// Keep binary keys in a typed map so repeated []byte lookups do not allocate
+	// an interface-backed string key.
+	binaryChildren map[string]any
 	// partitionCount is maintained by the root node for the current batch and
 	// sizes the single result slice returned by collectPartitions.
 	partitionCount int
 }
 
 func newPartitionMapNode() *partitionMapNode {
-	return &partitionMapNode{
-		children: make(map[any]any),
+	return &partitionMapNode{}
+}
+
+func (n *partitionMapNode) child(value any) (any, bool) {
+	if binary, ok := value.([]byte); ok {
+		if n.binaryChildren == nil {
+			return nil, false
+		}
+
+		child, found := n.binaryChildren[string(binary)]
+
+		return child, found
 	}
+
+	child, found := n.children[comparablePartitionKey(value)]
+
+	return child, found
+}
+
+func (n *partitionMapNode) setChild(value, child any) {
+	if binary, ok := value.([]byte); ok {
+		if n.binaryChildren == nil {
+			n.binaryChildren = make(map[string]any)
+		}
+		n.binaryChildren[string(binary)] = child
+
+		return
+	}
+
+	if n.children == nil {
+		n.children = make(map[any]any)
+	}
+	n.children[comparablePartitionKey(value)] = child
 }
 
 // getOrCreate navigates the tree and returns the partitionInfo for the given partition key,
@@ -676,11 +709,10 @@ func (n *partitionMapNode) getOrCreate(partitionRec partitionRecord, fieldInfo [
 	// Navigate through all but the last partition field
 	node := n
 	for _, part := range partitionRec[:len(partitionRec)-1] {
-		key := comparablePartitionKey(part)
-		val, ok := node.children[key]
+		val, ok := node.child(part)
 		if !ok {
 			newNode := newPartitionMapNode()
-			node.children[key] = newNode
+			node.setChild(part, newNode)
 			node = newNode
 		} else {
 			node = val.(*partitionMapNode)
@@ -688,10 +720,11 @@ func (n *partitionMapNode) getOrCreate(partitionRec partitionRecord, fieldInfo [
 	}
 
 	// Last level stores the actual partitionInfo
-	lastKey := comparablePartitionKey(partitionRec[len(partitionRec)-1])
-	partVal, ok := node.children[lastKey].(*partitionInfo)
-	if ok {
-		return partVal
+	lastPart := partitionRec[len(partitionRec)-1]
+	if val, ok := node.child(lastPart); ok {
+		if partVal, ok := val.(*partitionInfo); ok {
+			return partVal
+		}
 	}
 
 	// First time seeing this partition - create partitionValues map
@@ -705,12 +738,12 @@ func (n *partitionMapNode) getOrCreate(partitionRec partitionRecord, fieldInfo [
 		partRecCopy[i] = value
 	}
 
-	partVal = &partitionInfo{
+	partVal := &partitionInfo{
 		rows:            make([]int64, 0, initialPartitionRowCapacity(numRows, n.partitionCount)),
 		partitionValues: partitionValues,
 		partitionRec:    partRecCopy,
 	}
-	node.children[lastKey] = partVal
+	node.setChild(lastPart, partVal)
 	n.partitionCount++
 
 	return partVal
@@ -749,6 +782,14 @@ func (n *partitionMapNode) collectPartitions() []*partitionInfo {
 
 func (n *partitionMapNode) appendPartitions(result []*partitionInfo) []*partitionInfo {
 	for _, v := range n.children {
+		switch node := v.(type) {
+		case *partitionInfo:
+			result = append(result, node)
+		case *partitionMapNode:
+			result = node.appendPartitions(result)
+		}
+	}
+	for _, v := range n.binaryChildren {
 		switch node := v.(type) {
 		case *partitionInfo:
 			result = append(result, node)

@@ -168,6 +168,25 @@ func BenchmarkPartitionTransforms(b *testing.B) {
 			},
 		},
 		{
+			name:        "identity_binary",
+			arrowType:   arrow.BinaryTypes.Binary,
+			icebergType: iceberg.PrimitiveTypes.Binary,
+			transform:   iceberg.IdentityTransform{},
+			appendRows: func(count int) arrow.Array {
+				builder := array.NewBinaryBuilder(memory.DefaultAllocator, arrow.BinaryTypes.Binary)
+				defer builder.Release()
+				values := make([][]byte, 128)
+				for i := range values {
+					values[i] = fmt.Appendf(nil, "partition-value-%03d-abcdefghijklmnopqrstuvwxyz-0123456789", i)
+				}
+				for row := range count {
+					builder.Append(values[row%len(values)])
+				}
+
+				return builder.NewArray()
+			},
+		},
+		{
 			name:        "bucket_string",
 			arrowType:   arrow.BinaryTypes.String,
 			icebergType: iceberg.PrimitiveTypes.String,
