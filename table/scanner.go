@@ -1319,12 +1319,21 @@ func (scan *Scan) collectManifestEntriesWithSchemaOptionsAndMinSequenceNum(
 	return flattenClassifiedManifestEntries(manifestResults), nil
 }
 
-func (scan *Scan) dataManifestProjection(retainDataFileStats bool) (iceberg.ManifestEntryProjection, bool) {
-	includePruningStats := retainDataFileStats ||
-		(scan.rowFilter != nil && !scan.rowFilter.Equals(iceberg.AlwaysTrue{}))
+func (scan *Scan) dataManifestProjection(
+	schema *iceberg.Schema,
+	retainDataFileStats bool,
+) (iceberg.ManifestEntryProjection, bool, error) {
+	includePruningStats := retainDataFileStats
+	if !includePruningStats {
+		var err error
+		includePruningStats, err = inclusiveMetricsUsesStats(schema, scan.rowFilter, scan.caseSensitive)
+		if err != nil {
+			return iceberg.ManifestEntryProjection{}, false, err
+		}
+	}
 	dropColumnStats := includePruningStats && !retainDataFileStats
 
-	return iceberg.ManifestEntryProjection{IncludePruningStats: includePruningStats}, dropColumnStats
+	return iceberg.ManifestEntryProjection{IncludePruningStats: includePruningStats}, dropColumnStats, nil
 }
 
 func splitManifestList(manifestList []iceberg.ManifestFile) (dataManifests, deleteManifests []iceberg.ManifestFile) {
@@ -1432,6 +1441,19 @@ func (scan *Scan) planDataManifestTasksWithOptions(
 		return buildPartitionEvaluator(specID, scan.metadata, schema, partitionFilters, scan.caseSensitive)
 	})
 
+	var projection *iceberg.ManifestEntryProjection
+	dropColumnStats := false
+	stripTaskColumnStats := false
+	if projectScanColumns {
+		p, dropStats, err := scan.dataManifestProjection(schema, retainDataFileStats)
+		if err != nil {
+			return nil, err
+		}
+		projection = &p
+		dropColumnStats = dropStats
+		stripTaskColumnStats = p.IncludePruningStats && !dropStats
+	}
+
 	for index, manifest := range manifestList {
 		if !scan.checkSequenceNumber(minSeqNum, manifest) {
 			continue
@@ -1456,15 +1478,6 @@ func (scan *Scan) planDataManifestTasksWithOptions(
 			} else {
 				tasks = make([]FileScanTask, 0,
 					max(0, int(manifest.AddedDataFiles())+int(manifest.ExistingDataFiles())))
-			}
-			var projection *iceberg.ManifestEntryProjection
-			dropColumnStats := false
-			stripTaskColumnStats := false
-			if projectScanColumns {
-				var p iceberg.ManifestEntryProjection
-				p, dropColumnStats = scan.dataManifestProjection(retainDataFileStats)
-				stripTaskColumnStats = p.IncludePruningStats && !dropColumnStats
-				projection = &p
 			}
 			err = streamManifest(fs, manifest, partEval, metricsEval, projection, dropColumnStats, func(entry iceberg.ManifestEntry) error {
 				dataFile := entry.DataFile()

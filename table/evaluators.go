@@ -753,6 +753,62 @@ func (m *metricsEvaluator) isNan(v iceberg.Literal) bool {
 	}
 }
 
+// inclusiveMetricsStatsVisitor reports whether evaluating a bound predicate can
+// use data-file metric maps. It mirrors inclusiveMetricsEval's conservative
+// behavior: predicates that always return rowsMightMatch do not require stats.
+type inclusiveMetricsStatsVisitor struct{}
+
+func (inclusiveMetricsStatsVisitor) VisitTrue() bool  { return false }
+func (inclusiveMetricsStatsVisitor) VisitFalse() bool { return false }
+func (inclusiveMetricsStatsVisitor) VisitNot(child bool) bool {
+	panic(fmt.Errorf("%w: NOT should be rewritten %v", iceberg.ErrInvalidArgument, child))
+}
+func (inclusiveMetricsStatsVisitor) VisitAnd(left, right bool) bool { return left || right }
+func (inclusiveMetricsStatsVisitor) VisitOr(left, right bool) bool  { return left || right }
+
+func (inclusiveMetricsStatsVisitor) VisitUnbound(iceberg.UnboundPredicate) bool {
+	panic("need bound predicate")
+}
+
+func (inclusiveMetricsStatsVisitor) VisitBound(pred iceberg.BoundPredicate) bool {
+	if isTransformedTerm(pred.Term()) {
+		return false
+	}
+
+	switch pred.Op() {
+	case iceberg.OpNEQ, iceberg.OpNotIn, iceberg.OpBBoxNotIntersects:
+		return false
+	case iceberg.OpIsNull, iceberg.OpIsNan, iceberg.OpNotNan, iceberg.OpNotStartsWith:
+		_, extract := pred.Term().(iceberg.BoundExtract)
+
+		return !extract
+	default:
+		return true
+	}
+}
+
+func inclusiveMetricsUsesStats(
+	s *iceberg.Schema,
+	expr iceberg.BooleanExpression,
+	caseSensitive bool,
+) (bool, error) {
+	if expr == nil || expr.Equals(iceberg.AlwaysTrue{}) {
+		return false, nil
+	}
+
+	rewritten, err := iceberg.RewriteNotExpr(expr)
+	if err != nil {
+		return false, err
+	}
+
+	bound, err := iceberg.BindExpr(s, rewritten, caseSensitive)
+	if err != nil {
+		return false, err
+	}
+
+	return iceberg.VisitExpr(bound, inclusiveMetricsStatsVisitor{})
+}
+
 func newInclusiveMetricsEvaluator(s *iceberg.Schema, expr iceberg.BooleanExpression,
 	caseSensitive bool, includeEmptyFiles bool,
 ) (func(iceberg.DataFile) (bool, error), error) {

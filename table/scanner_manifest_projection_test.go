@@ -94,6 +94,10 @@ func TestOpenManifestWithProjectionDropsStatsAfterFiltering(t *testing.T) {
 }
 
 func TestDataManifestProjection(t *testing.T) {
+	schema := iceberg.NewSchema(1, iceberg.NestedField{
+		ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int64, Required: false,
+	})
+
 	for _, filter := range []struct {
 		name       string
 		expression iceberg.BooleanExpression
@@ -101,16 +105,19 @@ func TestDataManifestProjection(t *testing.T) {
 	}{
 		{name: "nil"},
 		{name: "always true", expression: iceberg.AlwaysTrue{}},
+		{name: "not equal", expression: iceberg.NotEqualTo(iceberg.Reference("id"), int64(1))},
 		{name: "row filter", expression: iceberg.EqualTo(iceberg.Reference("id"), int64(1)), needsStats: true},
 	} {
 		t.Run(filter.name, func(t *testing.T) {
-			scan := &Scan{rowFilter: filter.expression}
-			projection, dropStats := scan.dataManifestProjection(false)
+			scan := &Scan{rowFilter: filter.expression, caseSensitive: true}
+			projection, dropStats, err := scan.dataManifestProjection(schema, false)
+			require.NoError(t, err)
 			assert.Equal(t, filter.needsStats, projection.IncludePruningStats)
 			assert.Equal(t, filter.needsStats, dropStats,
 				"row-filter stats can be dropped after filtering when no equality delete needs them")
 
-			projection, dropStats = scan.dataManifestProjection(true)
+			projection, dropStats, err = scan.dataManifestProjection(schema, true)
+			require.NoError(t, err)
 			assert.True(t, projection.IncludePruningStats)
 			assert.False(t, dropStats,
 				"data-file stats must survive filtering for equality-delete pruning")

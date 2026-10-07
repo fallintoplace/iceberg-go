@@ -60,6 +60,138 @@ func TestManifestEvaluatorAlwaysTrue(t *testing.T) {
 	assert.True(t, matches)
 }
 
+func TestInclusiveMetricsUsesStats(t *testing.T) {
+	schema := iceberg.NewSchema(1,
+		iceberg.NestedField{
+			ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: false,
+		},
+		iceberg.NestedField{
+			ID: 2, Name: "name", Type: iceberg.PrimitiveTypes.String, Required: false,
+		},
+	)
+
+	ref := iceberg.Reference("id")
+	tests := []struct {
+		name string
+		expr iceberg.BooleanExpression
+		want bool
+	}{
+		{"always true", iceberg.AlwaysTrue{}, false},
+		{"not equal", iceberg.NotEqualTo(ref, int32(7)), false},
+		{"not in", iceberg.NotIn(ref, int32(7), int32(8)), false},
+		{"negated equal", iceberg.NewNot(iceberg.EqualTo(ref, int32(7))), false},
+		{"equal", iceberg.EqualTo(ref, int32(7)), true},
+		{"less than", iceberg.LessThan(ref, int32(7)), true},
+		{"is null", iceberg.IsNull(ref), true},
+		{"starts with", iceberg.StartsWith(iceberg.Reference("name"), "ab"), true},
+		{"mixed conjunction", iceberg.NewAnd(
+			iceberg.NotEqualTo(ref, int32(7)),
+			iceberg.EqualTo(ref, int32(8)),
+		), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := inclusiveMetricsUsesStats(schema, tt.expr, true)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestInclusiveMetricsUsesStatsMatchesEvaluator(t *testing.T) {
+	schema := iceberg.NewSchema(1, iceberg.NestedField{
+		ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: false,
+	})
+	ref := iceberg.Reference("id")
+
+	lower, err := iceberg.Int32Literal(1).MarshalBinary()
+	require.NoError(t, err)
+	upper, err := iceberg.Int32Literal(10).MarshalBinary()
+	require.NoError(t, err)
+
+	builder, err := iceberg.NewDataFileBuilder(
+		*iceberg.UnpartitionedSpec,
+		iceberg.EntryContentData,
+		"data.parquet",
+		iceberg.ParquetFile,
+		nil,
+		nil,
+		nil,
+		10,
+		128,
+	)
+	require.NoError(t, err)
+	builder.
+		ValueCounts(map[int]int64{1: 10}).
+		NullValueCounts(map[int]int64{1: 0}).
+		LowerBoundValues(map[int][]byte{1: lower}).
+		UpperBoundValues(map[int][]byte{1: upper})
+
+	withStats := builder.Build()
+	withoutStats := iceberg.DataFileWithoutColumnStats(withStats)
+
+	tests := []struct {
+		name             string
+		expr             iceberg.BooleanExpression
+		wantUsesStats    bool
+		wantWithStats    bool
+		wantWithoutStats bool
+	}{
+		{
+			name:             "not equal",
+			expr:             iceberg.NotEqualTo(ref, int32(5)),
+			wantUsesStats:    false,
+			wantWithStats:    true,
+			wantWithoutStats: true,
+		},
+		{
+			name:             "not in",
+			expr:             iceberg.NotIn(ref, int32(5), int32(6)),
+			wantUsesStats:    false,
+			wantWithStats:    true,
+			wantWithoutStats: true,
+		},
+		{
+			name:             "negated equal",
+			expr:             iceberg.NewNot(iceberg.EqualTo(ref, int32(5))),
+			wantUsesStats:    false,
+			wantWithStats:    true,
+			wantWithoutStats: true,
+		},
+		{
+			name:             "equal outside bounds",
+			expr:             iceberg.EqualTo(ref, int32(99)),
+			wantUsesStats:    true,
+			wantWithStats:    false,
+			wantWithoutStats: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usesStats, err := inclusiveMetricsUsesStats(schema, tt.expr, true)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantUsesStats, usesStats)
+
+			eval, err := newInclusiveMetricsEvaluator(schema, tt.expr, true, false)
+			require.NoError(t, err)
+
+			gotWithStats, err := eval(withStats)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantWithStats, gotWithStats)
+
+			gotWithoutStats, err := eval(withoutStats)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantWithoutStats, gotWithoutStats)
+
+			if !usesStats {
+				assert.Equal(t, gotWithStats, gotWithoutStats)
+			}
+		})
+	}
+}
+
 func TestManifestEvaluator(t *testing.T) {
 	var (
 		IntMin, IntMax       = []byte{byte(IntMinValue), 0x00, 0x00, 0x00}, []byte{byte(IntMaxValue), 0x00, 0x00, 0x00}
