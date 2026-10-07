@@ -77,7 +77,7 @@ func BenchmarkPartitionGatherPrototype(b *testing.B) {
 						}
 					})
 
-					for _, groupSize := range []int{16, 32, 64, 128} {
+					for _, groupSize := range []int{2, 4, 8, 16, 32, 64} {
 						b.Run(fmt.Sprintf("group_%d", groupSize), func(b *testing.B) {
 							partitionBatch := partitionBatchByKey(context.Background())
 							b.ReportAllocs()
