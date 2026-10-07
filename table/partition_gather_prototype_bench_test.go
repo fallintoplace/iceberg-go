@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/compute"
 )
 
 var partitionGatherBenchmarkRows int64
@@ -37,6 +38,28 @@ func BenchmarkPartitionGatherPrototype(b *testing.B) {
 				b.Run(fmt.Sprintf("%d_partitions", partitionCount), func(b *testing.B) {
 					b.Run("current", func(b *testing.B) {
 						partitionBatch := partitionBatchByKey(context.Background())
+						b.ReportAllocs()
+						b.ResetTimer()
+
+						for b.Loop() {
+							var seen int64
+							for _, indices := range partitions {
+								batch, err := partitionBatch(record, indices)
+								if err != nil {
+									b.Fatal(err)
+								}
+								seen += batch.NumRows()
+								batch.Release()
+							}
+							partitionGatherBenchmarkRows = seen
+						}
+					})
+
+					b.Run("serial_take", func(b *testing.B) {
+						execCtx := compute.GetExecCtx(context.Background())
+						execCtx.NumParallel = 1
+						ctx := compute.SetExecCtx(context.Background(), execCtx)
+						partitionBatch := partitionBatchByKey(ctx)
 						b.ReportAllocs()
 						b.ResetTimer()
 
