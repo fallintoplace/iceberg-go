@@ -27,3 +27,20 @@ jobs:
           path: source
           include-hidden-files: true
           retention-days: 1
+
+      - name: Install Go 1.26.3
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.3'
+          cache: false
+
+      - name: Package Go toolchain
+        shell: bash
+        run: tar -C "$(dirname "$(go env GOROOT)")" -czf /tmp/go1.26.3.linux-amd64.tar.gz "$(basename "$(go env GOROOT)")"
+
+      - name: Upload Go toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-1.26.3-linux-amd64
+          path: /tmp/go1.26.3.linux-amd64.tar.gz
+          retention-days: 1
