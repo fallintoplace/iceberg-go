@@ -32,11 +32,30 @@ import (
 // data-file lookup only visits deletes that can apply to that file.
 type positionalDeleteIndex struct {
 	byPath      map[string][]iceberg.ManifestEntry
-	byPartition map[string][]iceberg.ManifestEntry
+	byPartition map[string]*positionalDeletePartitionBucket
+}
+
+type positionalDeletePartitionBucket struct {
+	entries         []iceberg.ManifestEntry
+	pathRanges      []positionalDeletePathRange
+	fallbackIndexes []int
+}
+
+type positionalDeletePathRange struct {
+	lower        string
+	upper        string
+	entryIndexes []int
+}
+
+type positionalDeleteIndexedRange struct {
+	lower      string
+	upper      string
+	entryIndex int
 }
 
 func buildPositionalDeleteIndex(entries []iceberg.ManifestEntry) (*positionalDeleteIndex, error) {
 	idx := &positionalDeleteIndex{}
+	var partitionEntries map[string][]iceberg.ManifestEntry
 	for _, entry := range entries {
 		deleteFile := entry.DataFile()
 		if path := referencedDataFilePath(deleteFile); path != "" {
@@ -52,10 +71,10 @@ func buildPositionalDeleteIndex(entries []iceberg.ManifestEntry) (*positionalDel
 		if err != nil {
 			return nil, fmt.Errorf("indexing positional delete file %s: %w", deleteFile.FilePath(), err)
 		}
-		if idx.byPartition == nil {
-			idx.byPartition = make(map[string][]iceberg.ManifestEntry)
+		if partitionEntries == nil {
+			partitionEntries = make(map[string][]iceberg.ManifestEntry)
 		}
-		idx.byPartition[partitionKey] = append(idx.byPartition[partitionKey], entry)
+		partitionEntries[partitionKey] = append(partitionEntries[partitionKey], entry)
 	}
 
 	sortBySequence := func(entries []iceberg.ManifestEntry) {
@@ -66,11 +85,90 @@ func buildPositionalDeleteIndex(entries []iceberg.ManifestEntry) (*positionalDel
 	for _, pathEntries := range idx.byPath {
 		sortBySequence(pathEntries)
 	}
-	for _, partitionEntries := range idx.byPartition {
-		sortBySequence(partitionEntries)
+	if len(partitionEntries) > 0 {
+		idx.byPartition = make(map[string]*positionalDeletePartitionBucket, len(partitionEntries))
+		for partitionKey, entries := range partitionEntries {
+			sortBySequence(entries)
+			idx.byPartition[partitionKey] = buildPositionalDeletePartitionBucket(entries)
+		}
 	}
 
 	return idx, nil
+}
+
+func buildPositionalDeletePartitionBucket(entries []iceberg.ManifestEntry) *positionalDeletePartitionBucket {
+	bucket := &positionalDeletePartitionBucket{entries: entries}
+	indexedRanges := make([]positionalDeleteIndexedRange, 0, len(entries))
+	fallbackIndexes := make([]int, 0, len(entries))
+	for entryIndex, entry := range entries {
+		lower, upper, ok := positionalDeleteFilePathRange(entry.DataFile())
+		if !ok {
+			fallbackIndexes = append(fallbackIndexes, entryIndex)
+
+			continue
+		}
+		indexedRanges = append(indexedRanges, positionalDeleteIndexedRange{
+			lower: lower, upper: upper, entryIndex: entryIndex,
+		})
+	}
+	if len(indexedRanges) < 2 {
+		return bucket
+	}
+
+	slices.SortStableFunc(indexedRanges, func(a, b positionalDeleteIndexedRange) int {
+		if byLower := cmp.Compare(a.lower, b.lower); byLower != 0 {
+			return byLower
+		}
+
+		return cmp.Compare(a.upper, b.upper)
+	})
+
+	componentForEntry := make([]int, len(entries))
+	for i := range componentForEntry {
+		componentForEntry[i] = -1
+	}
+	components := make([]positionalDeletePathRange, 0, len(indexedRanges))
+	for _, indexed := range indexedRanges {
+		last := len(components) - 1
+		if last < 0 || indexed.lower > components[last].upper {
+			components = append(components, positionalDeletePathRange{
+				lower: indexed.lower,
+				upper: indexed.upper,
+			})
+			last++
+		} else if indexed.upper > components[last].upper {
+			components[last].upper = indexed.upper
+		}
+		componentForEntry[indexed.entryIndex] = last
+	}
+
+	// A single component cannot narrow candidate lookups within its envelope,
+	// so keep the existing sequence-suffix scan for dense overlapping ranges.
+	if len(components) < 2 {
+		return bucket
+	}
+
+	for entryIndex, componentIndex := range componentForEntry {
+		if componentIndex >= 0 {
+			components[componentIndex].entryIndexes = append(
+				components[componentIndex].entryIndexes, entryIndex)
+		}
+	}
+	bucket.pathRanges = components
+	bucket.fallbackIndexes = fallbackIndexes
+
+	return bucket
+}
+
+func positionalDeleteFilePathRange(deleteFile iceberg.DataFile) (string, string, bool) {
+	_, _, _, lowerBounds, upperBounds := dataFileStats(deleteFile)
+	lower := lowerBounds[filePathFieldID]
+	upper := upperBounds[filePathFieldID]
+	if lower == nil || upper == nil || bytes.Compare(lower, upper) > 0 {
+		return "", "", false
+	}
+
+	return string(lower), string(upper), true
 }
 
 // forDataFile returns positional deletes with a greater than or equal sequence
@@ -82,18 +180,18 @@ func (idx *positionalDeleteIndex) forDataFile(dataEntry iceberg.ManifestEntry) (
 	}
 
 	dataFile := dataEntry.DataFile()
-	var partitionEntries []iceberg.ManifestEntry
+	var partitionBucket *positionalDeletePartitionBucket
 	if len(idx.byPartition) > 0 {
 		partitionKey, err := canonicalPartitionKey(dataFile.SpecID(), dataFilePartition(dataFile))
 		if err != nil {
 			return nil, fmt.Errorf("matching positional deletes to data file %s: %w", dataFile.FilePath(), err)
 		}
-		partitionEntries = idx.byPartition[partitionKey]
+		partitionBucket = idx.byPartition[partitionKey]
 	}
 
 	dataSeqNum := dataEntry.SequenceNum()
-	out, err := appendPartitionDeletesFromSequence(
-		nil, partitionEntries, dataSeqNum, dataFile.FilePath())
+	out, err := appendPartitionBucketDeletesFromSequence(
+		nil, partitionBucket, dataSeqNum, dataFile.FilePath())
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +199,69 @@ func (idx *positionalDeleteIndex) forDataFile(dataEntry iceberg.ManifestEntry) (
 		out, idx.byPath[dataFile.FilePath()], dataSeqNum)
 
 	return out, nil
+}
+
+func appendPartitionBucketDeletesFromSequence(
+	out []iceberg.DataFile,
+	bucket *positionalDeletePartitionBucket,
+	dataSeqNum int64,
+	dataFilePath string,
+) ([]iceberg.DataFile, error) {
+	if bucket == nil {
+		return out, nil
+	}
+	if len(bucket.pathRanges) == 0 {
+		return appendPartitionDeletesFromSequence(out, bucket.entries, dataSeqNum, dataFilePath)
+	}
+
+	componentIndex := sort.Search(len(bucket.pathRanges), func(i int) bool {
+		return bucket.pathRanges[i].upper >= dataFilePath
+	})
+	var componentEntries []int
+	if componentIndex < len(bucket.pathRanges) &&
+		bucket.pathRanges[componentIndex].lower <= dataFilePath {
+		componentEntries = bucket.pathRanges[componentIndex].entryIndexes
+	}
+
+	componentStart := partitionEntryIndexStart(bucket.entries, componentEntries, dataSeqNum)
+	fallbackStart := partitionEntryIndexStart(bucket.entries, bucket.fallbackIndexes, dataSeqNum)
+	componentEntries = componentEntries[componentStart:]
+	fallbackEntries := bucket.fallbackIndexes[fallbackStart:]
+
+	for len(componentEntries) > 0 || len(fallbackEntries) > 0 {
+		var entryIndex int
+		switch {
+		case len(fallbackEntries) == 0:
+			entryIndex = componentEntries[0]
+			componentEntries = componentEntries[1:]
+		case len(componentEntries) == 0:
+			entryIndex = fallbackEntries[0]
+			fallbackEntries = fallbackEntries[1:]
+		case componentEntries[0] < fallbackEntries[0]:
+			entryIndex = componentEntries[0]
+			componentEntries = componentEntries[1:]
+		default:
+			entryIndex = fallbackEntries[0]
+			fallbackEntries = fallbackEntries[1:]
+		}
+
+		deleteFile := bucket.entries[entryIndex].DataFile()
+		if filePathMayMatch(deleteFile, dataFilePath) {
+			out = append(out, deleteFile)
+		}
+	}
+
+	return out, nil
+}
+
+func partitionEntryIndexStart(
+	entries []iceberg.ManifestEntry,
+	entryIndexes []int,
+	dataSeqNum int64,
+) int {
+	return sort.Search(len(entryIndexes), func(i int) bool {
+		return entries[entryIndexes[i]].SequenceNum() >= dataSeqNum
+	})
 }
 
 func appendPartitionDeletesFromSequence(
