@@ -228,6 +228,11 @@ func (p *partitionedFanoutWriter) fanout(ctx context.Context, writerCtx context.
 // processRecord partitions a single record batch and writes sub-batches to
 // the appropriate rolling data writers. The record is released when this
 // function returns, bounding Arrow memory to one batch per fanout worker.
+// partitionBatchGroupSize amortizes Arrow Take setup across scattered
+// partitions. Slices from one grouped Take share buffers, so the group stays
+// deliberately small to bound how much data a slow rolling writer can retain.
+const partitionBatchGroupSize = 4
+
 func (p *partitionedFanoutWriter) processRecord(ctx context.Context, writerCtx context.Context, record arrow.RecordBatch, dataFilesChannel chan<- iceberg.DataFile) error {
 	defer record.Release()
 
@@ -236,34 +241,105 @@ func (p *partitionedFanoutWriter) processRecord(ctx context.Context, writerCtx c
 		return err
 	}
 
+	partitionBatch := partitionBatchByKey(ctx)
+
+	// Preserve the existing zero-copy path for full or sufficiently large
+	// contiguous partitions. Reuse the partitions slice for the scattered
+	// partitions that still need materialization.
+	scattered := partitions[:0]
 	for _, val := range partitions {
-		select {
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		default:
+		partitionRecord, ok := zeroCopyPartitionBatch(record, val.rows)
+		if !ok {
+			scattered = append(scattered, val)
+
+			continue
 		}
 
-		partitionRecord, err := partitionBatchByKey(ctx)(record, val.rows)
-		if err != nil {
-			return err
-		}
-
-		partitionPath := p.partitionPath(val.partitionRec)
-		rollingDataWriter, err := p.writerFactory.getOrCreateRollingDataWriter(writerCtx, partitionPath, val.partitionValues, dataFilesChannel)
-		if err != nil {
-			partitionRecord.Release()
-
-			return err
-		}
-
-		addErr := rollingDataWriter.Add(partitionRecord)
+		addErr := p.addPartitionBatch(ctx, writerCtx, val, partitionRecord, dataFilesChannel)
 		partitionRecord.Release()
 		if addErr != nil {
 			return addErr
 		}
 	}
 
+	var groupedRows []int64
+	var offsets [partitionBatchGroupSize + 1]int64
+	for groupStart := 0; groupStart < len(scattered); groupStart += partitionBatchGroupSize {
+		groupEnd := min(groupStart+partitionBatchGroupSize, len(scattered))
+		group := scattered[groupStart:groupEnd]
+
+		if len(group) == 1 {
+			partitionRecord, err := partitionBatch(record, group[0].rows)
+			if err != nil {
+				return err
+			}
+
+			addErr := p.addPartitionBatch(ctx, writerCtx, group[0], partitionRecord, dataFilesChannel)
+			partitionRecord.Release()
+			if addErr != nil {
+				return addErr
+			}
+
+			continue
+		}
+
+		totalRows := 0
+		for _, val := range group {
+			totalRows += len(val.rows)
+		}
+		if cap(groupedRows) < totalRows {
+			groupedRows = make([]int64, 0, totalRows)
+		} else {
+			groupedRows = groupedRows[:0]
+		}
+
+		offsets[0] = 0
+		for i, val := range group {
+			groupedRows = append(groupedRows, val.rows...)
+			offsets[i+1] = int64(len(groupedRows))
+		}
+
+		groupedRecord, err := partitionBatch(record, groupedRows)
+		if err != nil {
+			return err
+		}
+
+		for i, val := range group {
+			partitionRecord := groupedRecord.NewSlice(offsets[i], offsets[i+1])
+			addErr := p.addPartitionBatch(ctx, writerCtx, val, partitionRecord, dataFilesChannel)
+			partitionRecord.Release()
+			if addErr != nil {
+				groupedRecord.Release()
+
+				return addErr
+			}
+		}
+		groupedRecord.Release()
+	}
+
 	return nil
+}
+
+func (p *partitionedFanoutWriter) addPartitionBatch(
+	ctx context.Context,
+	writerCtx context.Context,
+	val *partitionInfo,
+	partitionRecord arrow.RecordBatch,
+	dataFilesChannel chan<- iceberg.DataFile,
+) error {
+	select {
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	default:
+	}
+
+	partitionPath := p.partitionPath(val.partitionRec)
+	rollingDataWriter, err := p.writerFactory.getOrCreateRollingDataWriter(writerCtx, partitionPath, val.partitionValues, dataFilesChannel)
+	if err != nil {
+		return err
+	}
+
+	return rollingDataWriter.Add(partitionRecord)
 }
 
 func (p *partitionedFanoutWriter) yieldDataFiles(fanoutWorkers *errgroup.Group, inputRecordsCh <-chan arrow.RecordBatch, outputDataFilesCh chan iceberg.DataFile, cancel context.CancelFunc) iter.Seq2[iceberg.DataFile, error] {
@@ -762,26 +838,37 @@ func (n *partitionMapNode) appendPartitions(result []*partitionInfo) []*partitio
 
 type partitionBatchFn func(arrow.RecordBatch, []int64) (arrow.RecordBatch, error)
 
+func zeroCopyPartitionBatch(record arrow.RecordBatch, rowIndices []int64) (arrow.RecordBatch, bool) {
+	if len(rowIndices) == 0 && record.NumRows() == 0 {
+		record.Retain()
+
+		return record, true
+	}
+
+	start, end, ok := contiguousRowRange(rowIndices, record.NumRows())
+	if !ok {
+		return nil, false
+	}
+
+	if start == 0 && end == record.NumRows() {
+		record.Retain()
+
+		return record, true
+	}
+
+	if contiguousSliceHasBoundedRetention(start, end, record.NumRows()) && recordHasRowBoundedStorage(record) {
+		return record.NewSlice(start, end), true
+	}
+
+	return nil, false
+}
+
 func partitionBatchByKey(ctx context.Context) partitionBatchFn {
 	mem := compute.GetAllocator(ctx)
 
 	return func(record arrow.RecordBatch, rowIndices []int64) (arrow.RecordBatch, error) {
-		if len(rowIndices) == 0 && record.NumRows() == 0 {
-			record.Retain()
-
-			return record, nil
-		}
-
-		if start, end, ok := contiguousRowRange(rowIndices, record.NumRows()); ok {
-			if start == 0 && end == record.NumRows() {
-				record.Retain()
-
-				return record, nil
-			}
-
-			if contiguousSliceHasBoundedRetention(start, end, record.NumRows()) && recordHasRowBoundedStorage(record) {
-				return record.NewSlice(start, end), nil
-			}
+		if partitioned, ok := zeroCopyPartitionBatch(record, rowIndices); ok {
+			return partitioned, nil
 		}
 
 		bldr := array.NewInt64Builder(mem)
