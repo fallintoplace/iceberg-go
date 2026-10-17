@@ -73,10 +73,8 @@ func (m *MemFS) Open(name string) (File, error) {
 	if !ok {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
-	cp := make([]byte, len(data))
-	copy(cp, data)
-
-	return &memFile{data: cp, name: path.Base(name)}, nil
+	// WriteFile owns stored buffers, so open handles can share data across replacements.
+	return &memFile{data: data, name: path.Base(name)}, nil
 }
 
 func (m *MemFS) Remove(name string) error {
