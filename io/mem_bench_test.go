@@ -48,3 +48,36 @@ func BenchmarkMemFSWalkDir(b *testing.B) {
 		})
 	}
 }
+
+var memFSOpenSink byte
+
+func BenchmarkMemFSOpen(b *testing.B) {
+	for _, size := range []int{1 << 10, 64 << 10, 1 << 20} {
+		b.Run(fmt.Sprintf("bytes=%d", size), func(b *testing.B) {
+			memIO := icebergio.NewMemFS()
+			const name = "mem://bucket/file.parquet"
+			data := make([]byte, size)
+			data[0] = 'x'
+			if err := memIO.WriteFile(name, data); err != nil {
+				b.Fatal(err)
+			}
+
+			var buf [1]byte
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				file, err := memIO.Open(name)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := file.Read(buf[:]); err != nil {
+					b.Fatal(err)
+				}
+				if err := file.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+			memFSOpenSink = buf[0]
+		})
+	}
+}
