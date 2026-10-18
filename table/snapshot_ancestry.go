@@ -148,32 +148,33 @@ func AncestorsBetween(latestID, baseID int64, lookup SnapshotLookup) ([]Snapshot
 // semantics are stricter (conservative) — broken chains return false
 // rather than matching an unreachable ancestor id.
 func IsAncestorOf(snapshotID, ancestorID int64, lookup SnapshotLookup) bool {
-	visited := make(map[int64]struct{})
-
+	// Detect cycles with a power-of-two checkpoint instead of storing every
+	// visited snapshot ID. The walk still resolves each snapshot before
+	// checking equality, so unknown IDs never count as ancestors.
+	checkpoint := snapshotID
+	power, distance := 1, 0
 	id := snapshotID
 	for {
-		if _, seen := visited[id]; seen {
-			return false
-		}
-
 		snap := lookup(id)
 		if snap == nil {
 			return false
 		}
-
-		// Equality check must come BEFORE the visited write so that an
-		// ancestor reached in the second hop of a cycle (e.g. 1 ↔ 2,
-		// IsAncestorOf(1, 2)) is correctly returned as true before
-		// cycle detection fires on the next iteration.
 		if id == ancestorID {
 			return true
 		}
-
-		visited[id] = struct{}{}
-
 		if snap.ParentSnapshotID == nil {
 			return false
 		}
+
 		id = *snap.ParentSnapshotID
+		distance++
+		if id == checkpoint {
+			return false
+		}
+		if distance == power {
+			checkpoint = id
+			power *= 2
+			distance = 0
+		}
 	}
 }

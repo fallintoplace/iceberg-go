@@ -281,6 +281,38 @@ func TestIsAncestorOf_AncestorReachableInsideCycle(t *testing.T) {
 	assert.True(t, IsAncestorOf(2, 1, buildCycle()))
 }
 
+func TestIsAncestorOf_SelfLoop(t *testing.T) {
+	id := int64(1)
+	lookup := func(snapshotID int64) *Snapshot {
+		if snapshotID != id {
+			return nil
+		}
+
+		return &Snapshot{SnapshotID: id, ParentSnapshotID: &id}
+	}
+
+	assert.True(t, IsAncestorOf(1, 1, lookup))
+	assert.False(t, IsAncestorOf(1, 2, lookup))
+}
+
+func TestIsAncestorOf_LongTailIntoCycle(t *testing.T) {
+	// 32 -> ... -> 3 -> 2 -> 1 -> 3. Check a member of the
+	// tail, a member of the cycle, and an unreachable snapshot.
+	snapshots := make(map[int64]*Snapshot, 32)
+	for id := int64(1); id <= 32; id++ {
+		parent := id - 1
+		if id == 1 {
+			parent = 3
+		}
+		snapshots[id] = &Snapshot{SnapshotID: id, ParentSnapshotID: &parent}
+	}
+	lookup := func(id int64) *Snapshot { return snapshots[id] }
+
+	assert.True(t, IsAncestorOf(32, 16, lookup))
+	assert.True(t, IsAncestorOf(32, 2, lookup))
+	assert.False(t, IsAncestorOf(32, 99, lookup))
+}
+
 func snapshotIDs(snaps []Snapshot) []int64 {
 	ids := make([]int64, len(snaps))
 	for i, s := range snaps {
