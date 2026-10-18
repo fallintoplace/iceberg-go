@@ -1339,41 +1339,87 @@ func deletionVectorKeepsRow(keepBits []byte, rowCount, pos int64) bool {
 	return pos >= rowCount || keepBits[pos>>3]&(1<<(uint(pos)&7)) != 0
 }
 
-// filterByDeletionVector returns a pipeline step that drops rows present in
-// the bitmap by precomputing a bit-packed keep-mask covering the whole file
-// once and slicing the relevant range per batch into compute.FilterRecordBatch.
-//
-// The mask layout matches Arrow's Boolean buffer convention (LSB-first per
-// byte, little-endian word order), so dv.KeepMaskBytes -> memory.NewBufferBytes
-// -> array.NewBoolean is a zero-copy wrap. The keepBits slice is Go-allocated
-// (GC-friendly) and shared across every per-batch Boolean array; each
-// array.NewBoolean / array.NewSlice pair is released after the batch.
-//
-// rowCount bounds the mask to the data file's row count. cursor maps each batch
-// row to its original file position: when no row group was pruned the positions
-// are contiguous and the mask is sliced zero-copy; when pruning skipped groups
-// the emitted rows are non-contiguous, so the keep bits are gathered per row at
-// the cursor's positions.
+// filterByDeletionVector removes rows listed in the deletion vector. For sparse
+// vectors, clean contiguous batches pass through unchanged and only batches
+// with deletes build a mask. Dense vectors and pruned row groups retain the
+// full-file mask path.
 func filterByDeletionVector(ctx context.Context, bitmap *dv.RoaringPositionBitmap, rowCount int64, cursor *rowPositionCursor) recProcessFn {
+	const sparseBatchFraction = 8
+
 	nextIdx := int64(0)
-	keepBits := bitmap.KeepMaskBytes(rowCount)
-	buf := memory.NewBufferBytes(keepBits)
+	cardinality := bitmap.Cardinality()
 	mem := compute.GetAllocator(ctx)
+	var (
+		checkedSparse   bool
+		useSparse       bool
+		sparsePositions []uint64
+		sparseIndex     int
+		keepBits        []byte
+		buf             *memory.Buffer
+	)
+	ensureFullMask := func() {
+		if buf == nil {
+			keepBits = bitmap.KeepMaskBytes(rowCount)
+			buf = memory.NewBufferBytes(keepBits)
+		}
+	}
 
 	return func(r arrow.RecordBatch) (arrow.RecordBatch, error) {
 		defer r.Release()
-
 		nrows := r.NumRows()
 
 		if !cursor.src.pruned() {
 			currentIdx := nextIdx
 			nextIdx += nrows
 
+			// A sparse vector can touch at most cardinality batches. Only use
+			// this path when even that worst case affects <= 1/8 of the file.
+			if !checkedSparse && nrows > 0 {
+				checkedSparse = true
+				useSparse = rowCount > 0 && cardinality <= rowCount/nrows/sparseBatchFraction
+				if useSparse {
+					sparsePositions = slices.Collect(bitmap.Positions())
+				}
+			}
+			if useSparse && nrows > 0 && cardinality > rowCount/nrows/sparseBatchFraction {
+				// A later, larger batch can invalidate the initial estimate.
+				useSparse = false
+				sparsePositions = nil
+			}
+			if useSparse && nextIdx <= rowCount {
+				for sparseIndex < len(sparsePositions) && sparsePositions[sparseIndex] < uint64(currentIdx) {
+					sparseIndex++
+				}
+				if sparseIndex == len(sparsePositions) || sparsePositions[sparseIndex] >= uint64(nextIdx) {
+					r.Retain()
+
+					return r, nil
+				}
+
+				bldr := array.NewBooleanBuilder(mem)
+				defer bldr.Release()
+				bldr.Reserve(int(nrows))
+				for pos := currentIdx; pos < nextIdx; pos++ {
+					deleted := sparseIndex < len(sparsePositions) && sparsePositions[sparseIndex] == uint64(pos)
+					bldr.Append(!deleted)
+					if deleted {
+						sparseIndex++
+					}
+				}
+				mask := bldr.NewBooleanArray()
+				defer mask.Release()
+
+				return compute.FilterRecordBatch(ctx, r, mask, compute.DefaultFilterOptions())
+			}
+
+			if currentIdx >= rowCount {
+				r.Retain()
+
+				return r, nil
+			}
+			ensureFullMask()
 			if nextIdx <= rowCount {
-				// Wrap (and slice) the shared keep-mask buffer for this batch.
-				// array.NewSlice on a Boolean array tracks the bit-level offset,
-				// so we don't need byte-aligned slicing — currentIdx can land
-				// anywhere within a byte.
+				// For dense vectors, share one bit-packed full-file mask.
 				full := array.NewBoolean(int(rowCount), buf, nil, 0)
 				defer full.Release()
 				sliced := array.NewSlice(full, currentIdx, nextIdx).(*array.Boolean)
@@ -1381,15 +1427,9 @@ func filterByDeletionVector(ctx context.Context, bitmap *dv.RoaringPositionBitma
 
 				return compute.FilterRecordBatch(ctx, r, sliced, compute.DefaultFilterOptions())
 			}
-			if currentIdx >= rowCount {
-				r.Retain()
 
-				return r, nil
-			}
-
-			// A stale manifest count can be smaller than the rows emitted by
-			// the file. Preserve rows beyond the mask rather than slicing past
-			// its bounds and panicking.
+			// A stale manifest count may be smaller than the physical file.
+			// Positions beyond rowCount are retained, as on the old path.
 			bldr := array.NewBooleanBuilder(mem)
 			defer bldr.Release()
 			bldr.Reserve(int(nrows))
@@ -1402,14 +1442,13 @@ func filterByDeletionVector(ctx context.Context, bitmap *dv.RoaringPositionBitma
 			return compute.FilterRecordBatch(ctx, r, mask, compute.DefaultFilterOptions())
 		}
 
+		ensureFullMask()
 		bldr := array.NewBooleanBuilder(mem)
 		defer bldr.Release()
 		bldr.Reserve(int(nrows))
 		for range nrows {
 			pos := cursor.next()
-			// keepBits is sized for rowCount; a pos past it means row-group
-			// metadata and the manifest's File.Count() disagree. Keep the row
-			// rather than indexing out of bounds.
+			// Ignore positions past stale manifest counts.
 			bldr.Append(deletionVectorKeepsRow(keepBits, rowCount, pos))
 		}
 		mask := bldr.NewBooleanArray()
