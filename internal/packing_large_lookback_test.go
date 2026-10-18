@@ -115,6 +115,28 @@ func TestPackingLargeLookbackMatchesLinear(t *testing.T) {
 	}
 }
 
+// Exercise the path that starts with indexed packing, then must restore the
+// linear bins when a negative or oversized item appears.
+func TestPackingLargeLookbackFallbackAfterIndexing(t *testing.T) {
+	for _, unusual := range []int64{-1, 150} {
+		weights := make([]int64, 7000)
+		indices := make([]int, len(weights))
+		for i := range weights {
+			indices[i] = i
+			weights[i] = 80
+			if i == 5000 {
+				weights[i] = unusual
+			}
+		}
+		packer := internal.SlicePacker[int]{TargetWeight: 128, Lookback: 128}
+		got := packer.PackEnd(indices, func(i int) int64 { return weights[i] })
+		want := referenceFIFOPackEnd(weights, 128, 128)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("unusual weight %d: indexed fallback changed packing", unusual)
+		}
+	}
+}
+
 func TestPackingLargeLookbackOverflowFallback(t *testing.T) {
 	weights := []int64{math.MaxInt64, math.MaxInt64, -1, 0, 50, 99}
 	indices := make([]int, len(weights))
