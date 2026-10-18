@@ -124,7 +124,7 @@ func TestPackingLargeLookbackFallbackAfterIndexing(t *testing.T) {
 		for i := range weights {
 			indices[i] = i
 			weights[i] = 80
-			if i == 5000 {
+			if i == 1500 {
 				weights[i] = unusual
 			}
 		}
