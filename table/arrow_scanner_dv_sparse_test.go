@@ -184,3 +184,12 @@ func TestFilterByDeletionVectorSparseVariableBatchSizes(t *testing.T) {
 	require.Equal(t, int64(101), values[92])
 	require.Equal(t, int64(1901), values[1891])
 }
+
+func TestSparseDeletionVectorIndexMemoryBudget(t *testing.T) {
+	require.True(t, sparseDeletionVectorWorthIndexing(100, 100_663_296, 8_192))
+	require.True(t, sparseDeletionVectorWorthIndexing(10_000, 10_000_000, 1))
+	require.False(t, sparseDeletionVectorWorthIndexing(20_000, 10_000_000, 1))
+	require.False(t, sparseDeletionVectorWorthIndexing(100, 1_024, 1))
+	require.False(t, sparseDeletionVectorWorthIndexing(0, 0, 1))
+	require.False(t, sparseDeletionVectorWorthIndexing(0, 1_024, 0))
+}

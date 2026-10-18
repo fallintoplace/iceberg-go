@@ -1339,13 +1339,26 @@ func deletionVectorKeepsRow(keepBits []byte, rowCount, pos int64) bool {
 	return pos >= rowCount || keepBits[pos>>3]&(1<<(uint(pos)&7)) != 0
 }
 
+// sparseDeletionVectorWorthIndexing bounds both the number of batches that
+// might need filtering and the memory used to materialize delete positions.
+// Each position takes 8 bytes. The packed file-wide mask takes 1 bit per row,
+// so rowCount/512 keeps the index below one-eighth of the mask's size.
+func sparseDeletionVectorWorthIndexing(cardinality, rowCount, batchRows int64) bool {
+	if rowCount <= 0 || batchRows <= 0 {
+		return false
+	}
+
+	const sparseBatchFraction = 8
+
+	return cardinality <= rowCount/batchRows/sparseBatchFraction &&
+		cardinality <= rowCount/512
+}
+
 // filterByDeletionVector removes rows listed in the deletion vector. For sparse
 // vectors, clean contiguous batches pass through unchanged and only batches
 // with deletes build a mask. Dense vectors and pruned row groups retain the
 // full-file mask path.
 func filterByDeletionVector(ctx context.Context, bitmap *dv.RoaringPositionBitmap, rowCount int64, cursor *rowPositionCursor) recProcessFn {
-	const sparseBatchFraction = 8
-
 	nextIdx := int64(0)
 	cardinality := bitmap.Cardinality()
 	mem := compute.GetAllocator(ctx)
@@ -1376,12 +1389,12 @@ func filterByDeletionVector(ctx context.Context, bitmap *dv.RoaringPositionBitma
 			// this path when even that worst case affects <= 1/8 of the file.
 			if !checkedSparse && nrows > 0 {
 				checkedSparse = true
-				useSparse = rowCount > 0 && cardinality <= rowCount/nrows/sparseBatchFraction
+				useSparse = sparseDeletionVectorWorthIndexing(cardinality, rowCount, nrows)
 				if useSparse {
 					sparsePositions = slices.Collect(bitmap.Positions())
 				}
 			}
-			if useSparse && nrows > 0 && cardinality > rowCount/nrows/sparseBatchFraction {
+			if useSparse && !sparseDeletionVectorWorthIndexing(cardinality, rowCount, nrows) {
 				// A later, larger batch can invalidate the initial estimate.
 				useSparse = false
 				sparsePositions = nil
