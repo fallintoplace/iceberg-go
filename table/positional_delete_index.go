@@ -31,8 +31,9 @@ import (
 // and all remaining deletes by partition. Each bucket is sequence-sorted so a
 // data-file lookup only visits deletes that can apply to that file.
 type positionalDeleteIndex struct {
-	byPath      map[string][]iceberg.ManifestEntry
-	byPartition map[string][]iceberg.ManifestEntry
+	byPath           map[string][]iceberg.ManifestEntry
+	byPartition      map[string][]iceberg.ManifestEntry
+	rangeByPartition map[string]*positionalDeleteRangeIndex
 }
 
 func buildPositionalDeleteIndex(entries []iceberg.ManifestEntry) (*positionalDeleteIndex, error) {
@@ -66,8 +67,14 @@ func buildPositionalDeleteIndex(entries []iceberg.ManifestEntry) (*positionalDel
 	for _, pathEntries := range idx.byPath {
 		sortBySequence(pathEntries)
 	}
-	for _, partitionEntries := range idx.byPartition {
+	for key, partitionEntries := range idx.byPartition {
 		sortBySequence(partitionEntries)
+		if rangeIndex := newPositionalDeleteRangeIndex(partitionEntries); rangeIndex != nil {
+			if idx.rangeByPartition == nil {
+				idx.rangeByPartition = make(map[string]*positionalDeleteRangeIndex)
+			}
+			idx.rangeByPartition[key] = rangeIndex
+		}
 	}
 
 	return idx, nil
@@ -83,17 +90,25 @@ func (idx *positionalDeleteIndex) forDataFile(dataEntry iceberg.ManifestEntry) (
 
 	dataFile := dataEntry.DataFile()
 	var partitionEntries []iceberg.ManifestEntry
+	var partitionRange *positionalDeleteRangeIndex
 	if len(idx.byPartition) > 0 {
 		partitionKey, err := canonicalPartitionKey(dataFile.SpecID(), dataFilePartition(dataFile))
 		if err != nil {
 			return nil, fmt.Errorf("matching positional deletes to data file %s: %w", dataFile.FilePath(), err)
 		}
 		partitionEntries = idx.byPartition[partitionKey]
+		partitionRange = idx.rangeByPartition[partitionKey]
 	}
 
 	dataSeqNum := dataEntry.SequenceNum()
-	out, err := appendPartitionDeletesFromSequence(
-		nil, partitionEntries, dataSeqNum, dataFile.FilePath())
+	var out []iceberg.DataFile
+	var err error
+	if partitionRange != nil {
+		out, err = partitionRange.appendMatches(nil, dataSeqNum, dataFile.FilePath())
+	} else {
+		out, err = appendPartitionDeletesFromSequence(
+			nil, partitionEntries, dataSeqNum, dataFile.FilePath())
+	}
 	if err != nil {
 		return nil, err
 	}
