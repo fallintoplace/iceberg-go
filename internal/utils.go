@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"math"
 	"slices"
 	"sync/atomic"
 
@@ -112,10 +113,33 @@ func (b *Bin[T]) Add(item T, weight int64) {
 	b.items = append(b.items, item)
 }
 
+// PackingIterator uses the original linear first-fit path for short lookbacks.
+// For longer FIFO windows it switches to a bounded index only after observing
+// enough search work to justify maintaining it.
 func PackingIterator[T any](itr iter.Seq[T], targetWeight int64, lookback int, weightFunc func(T) int64, largestBinFirst bool) iter.Seq[[]T] {
 	bins := make([]Bin[T], 0)
+	var indexed *fifoPackingIndex[T]
+
+	// With nonnegative weights and a target <= MaxInt64/2, remaining-capacity
+	// comparisons agree with CanAdd (including its signed addition). Unusual
+	// weights fall back to the original linear path without changing results.
+	eligible := !largestBinFirst && lookback >= 128 && targetWeight > 0 && targetWeight <= math.MaxInt64/2
+	var lookups, examined int64
+
 	findBin := func(weight int64) *Bin[T] {
+		if !eligible {
+			for i := range bins {
+				if bins[i].CanAdd(weight) {
+					return &bins[i]
+				}
+			}
+
+			return nil
+		}
+
+		lookups++
 		for i := range bins {
+			examined++
 			if bins[i].CanAdd(weight) {
 				return &bins[i]
 			}
@@ -158,8 +182,33 @@ func PackingIterator[T any](itr iter.Seq[T], targetWeight int64, lookback int, w
 	return func(yield func([]T) bool) {
 		for item := range itr {
 			w := weightFunc(item)
-			bin := findBin(w)
-			if bin != nil {
+			if eligible && (w < 0 || w > targetWeight) {
+				eligible = false
+				if indexed != nil {
+					bins = indexed.intoSlice()
+					indexed = nil
+				}
+			}
+
+			if indexed != nil {
+				if slot := indexed.find(w); slot >= 0 {
+					indexed.appendTo(slot, item, w)
+				} else {
+					var removed *Bin[T]
+					if indexed.count == lookback {
+						old := indexed.removeOldest()
+						removed = &old
+					}
+					indexed.add(item, w)
+					if removed != nil && !yield(removed.items) {
+						return
+					}
+				}
+
+				continue
+			}
+
+			if bin := findBin(w); bin != nil {
 				bin.Add(item, w)
 			} else {
 				bin := Bin[T]{targetWeight: targetWeight}
@@ -172,11 +221,26 @@ func PackingIterator[T any](itr iter.Seq[T], targetWeight int64, lookback int, w
 					}
 				}
 			}
+
+			// Sampling first-fit comparisons avoids a tree on workloads where
+			// the first bin usually fits. This check needs no extra buffering.
+			if eligible && lookups >= 2048 && len(bins) >= 64 && examined >= lookups*64 {
+				indexed = newFIFOPackingIndex(bins, targetWeight)
+				bins = nil
+			}
 		}
 
-		for len(bins) > 0 {
-			if !yield(removeBin().items) {
-				return
+		if indexed != nil {
+			for indexed.count > 0 {
+				if !yield(indexed.removeOldest().items) {
+					return
+				}
+			}
+		} else {
+			for len(bins) > 0 {
+				if !yield(removeBin().items) {
+					return
+				}
 			}
 		}
 	}
