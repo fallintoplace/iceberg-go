@@ -21,11 +21,11 @@ package internal
 // with a max segment tree. Searches return the oldest bin that fits, matching
 // the first-fit ordering used by PackingIterator.
 type fifoPackingIndex[T any] struct {
-	bins          []Bin[T]
-	maxRemaining  []int64
-	head          int
-	count         int
-	targetWeight  int64
+	bins         []Bin[T]
+	maxRemaining []int64
+	head         int
+	count        int
+	targetWeight int64
 }
 
 func newFIFOPackingIndex[T any](current []Bin[T], targetWeight int64) *fifoPackingIndex[T] {
