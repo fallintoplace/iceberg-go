@@ -44,7 +44,7 @@ func dvSparseTestBatch(start, count int64) arrow.RecordBatch {
 func TestFilterByDeletionVectorSparseBatches(t *testing.T) {
 	const (
 		rowsPerBatch = int64(16)
-		totalRows    = int64(1024)
+		totalRows    = int64(2048)
 	)
 	bitmap := dv.NewRoaringPositionBitmap()
 	bitmap.Set(83)                    // Batch 5, row 3.
