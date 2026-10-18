@@ -40,6 +40,13 @@ func BenchmarkToSubstraitLiteralSet(b *testing.B) {
 			},
 		},
 		{
+			name: "bool",
+			typ:  iceberg.PrimitiveTypes.Bool,
+			lit: func(value int) iceberg.Literal {
+				return iceberg.BoolLiteral(value%2 == 0)
+			},
+		},
+		{
 			name: "string",
 			typ:  iceberg.PrimitiveTypes.String,
 			lit: func(value int) iceberg.Literal {
@@ -50,7 +57,7 @@ func BenchmarkToSubstraitLiteralSet(b *testing.B) {
 
 	for _, testCase := range cases {
 		b.Run(testCase.name, func(b *testing.B) {
-			for _, size := range []int{10, 100, 1000} {
+			for _, size := range []int{1, 10, 100, 1000} {
 				template := make([]iceberg.Literal, size)
 				for i := range template {
 					template[i] = testCase.lit((i * 7919) % size)

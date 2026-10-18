@@ -21,7 +21,7 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -353,8 +353,8 @@ func toSubstraitLiteralSet(typ iceberg.Type, lits []iceberg.Literal) expr.ListLi
 
 	switch typ.(type) {
 	case iceberg.BooleanType, iceberg.StringType:
-		sort.Slice(lits, func(i, j int) bool {
-			return lits[i].String() < lits[j].String()
+		slices.SortFunc(lits, func(a, b iceberg.Literal) int {
+			return strings.Compare(a.String(), b.String())
 		})
 	default:
 		type keyedLiteral struct {
@@ -366,8 +366,8 @@ func toSubstraitLiteralSet(typ iceberg.Type, lits []iceberg.Literal) expr.ListLi
 		for i, lit := range lits {
 			keyed[i] = keyedLiteral{literal: lit, key: lit.String()}
 		}
-		sort.Slice(keyed, func(i, j int) bool {
-			return keyed[i].key < keyed[j].key
+		slices.SortFunc(keyed, func(a, b keyedLiteral) int {
+			return strings.Compare(a.key, b.key)
 		})
 		for i, item := range keyed {
 			lits[i] = item.literal
