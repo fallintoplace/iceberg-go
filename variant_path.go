@@ -128,6 +128,7 @@ func parseBracketSelector(s, path string) (string, int, error) {
 	}
 
 	var b strings.Builder
+	hasEscape := false
 	for i := 2; i < len(s); {
 		c := s[i]
 		switch c {
@@ -136,11 +137,20 @@ func parseBracketSelector(s, path string) (string, int, error) {
 				return "", 0, fmt.Errorf("%w: invalid variant path %q (expected ']' after quoted member)", ErrInvalidArgument, path)
 			}
 
+			if !hasEscape {
+				return s[2:i], i + 2, nil
+			}
+
 			return b.String(), i + 2, nil
 		case '\\':
 			if i+1 >= len(s) {
 				return "", 0, fmt.Errorf("%w: invalid variant path %q (dangling escape)", ErrInvalidArgument, path)
 			}
+			if !hasEscape {
+				b.WriteString(s[2:i])
+				hasEscape = true
+			}
+
 			switch e := s[i+1]; e {
 			case 'b':
 				b.WriteByte('\b')
@@ -168,7 +178,9 @@ func parseBracketSelector(s, path string) (string, int, error) {
 			}
 			i += 2
 		default:
-			b.WriteByte(c)
+			if hasEscape {
+				b.WriteByte(c)
+			}
 			i++
 		}
 	}
