@@ -30,7 +30,7 @@ func BenchmarkParseBracketSelector(b *testing.B) {
 		{"plain", "$['purchase_amount']"},
 		{"dotted", "$['user.name']"},
 		{"unicode", "$['naïve']"},
-		{"escaped", `$['o\\'brien']`},
+		{"escaped", `$['o\'brien']`},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			b.ReportAllocs()
