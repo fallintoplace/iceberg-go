@@ -53,7 +53,15 @@ type simpleLocationProvider struct {
 // It trims trailing slashes from the base but does not otherwise clean,
 // encode, or decode the local path or URI.
 func joinLocationPath(location string, elem ...string) string {
-	return strings.TrimRight(location, "/") + "/" + strings.Join(elem, "/")
+	base := strings.TrimRight(location, "/")
+	switch len(elem) {
+	case 1:
+		return base + "/" + elem[0]
+	case 2:
+		return base + "/" + elem[0] + "/" + elem[1]
+	default:
+		return base + "/" + strings.Join(elem, "/")
+	}
 }
 
 func (slp *simpleLocationProvider) NewDataLocation(dataFileName string) string {

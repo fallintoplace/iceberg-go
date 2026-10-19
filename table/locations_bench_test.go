@@ -29,3 +29,53 @@ func BenchmarkComputeHash(b *testing.B) {
 		computeHashBenchmarkSink = computeHash(dataFileName)
 	}
 }
+
+var locationBenchmarkSink string
+
+func BenchmarkJoinLocationPath(b *testing.B) {
+	const base = "s3://iceberg-warehouse/data/my_table/xyz"
+	const hash = "0101/0110/1001/10110010"
+	const fileName = "part-00000-8f4c2e1d-2d6b-4e38-9f7f-2bca3d8e6a10-c000.snappy.parquet"
+
+	for _, tt := range []struct {
+		name  string
+		elems []string
+	}{
+		{"one", []string{fileName}},
+		{"two", []string{hash, fileName}},
+		{"three", []string{hash, "partition=x", fileName}},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				locationBenchmarkSink = joinLocationPath(base, tt.elems...)
+			}
+		})
+	}
+}
+
+func BenchmarkObjectStoreNewDataLocation(b *testing.B) {
+	const fileName = "part-00000-8f4c2e1d-2d6b-4e38-9f7f-2bca3d8e6a10-c000.snappy.parquet"
+
+	for _, tt := range []struct {
+		name           string
+		partitionPaths bool
+	}{
+		{"flat", false},
+		{"partitioned", true},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			provider := &objectStoreLocationProvider{
+				simpleLocationProvider: &simpleLocationProvider{
+					dataPath: "s3://iceberg-warehouse/data/my_table/xyz",
+				},
+				includePartitionPaths: tt.partitionPaths,
+			}
+
+			b.ReportAllocs()
+			for range b.N {
+				locationBenchmarkSink = provider.NewDataLocation(fileName)
+			}
+		})
+	}
+}
