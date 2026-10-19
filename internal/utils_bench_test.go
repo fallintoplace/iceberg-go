@@ -72,3 +72,36 @@ func BenchmarkSlicePackerPackEnd(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkSlicePackerLargestBinFirst measures largest-bin eviction with
+// frequent new bins and with mixed weights that sometimes fit existing bins.
+var largestBinFirstBenchmarkSink [][]int64
+
+func BenchmarkSlicePackerLargestBinFirst(b *testing.B) {
+	weight := func(v int64) int64 { return v }
+	for _, lookback := range []int{16, 64, 256} {
+		for _, workload := range []string{"no_fit", "mixed"} {
+			items := make([]int64, 4096)
+			for i := range items {
+				if workload == "no_fit" {
+					items[i] = 65 + int64(i%64)
+				} else {
+					items[i] = 1 + int64((i*73)%128)
+				}
+			}
+			packer := internal.SlicePacker[int64]{
+				TargetWeight:    128,
+				Lookback:        lookback,
+				LargestBinFirst: true,
+			}
+
+			b.Run("lookback="+strconv.Itoa(lookback)+"/"+workload, func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					largestBinFirstBenchmarkSink = packer.Pack(items, weight)
+				}
+			})
+		}
+	}
+}
