@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"cmp"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -126,14 +125,16 @@ func PackingIterator[T any](itr iter.Seq[T], targetWeight int64, lookback int, w
 
 	removeBin := func() Bin[T] {
 		if largestBinFirst {
-			maxBin := slices.MaxFunc(bins, func(a, b Bin[T]) int {
-				return cmp.Compare(a.Weight(), b.Weight())
-			})
-			i := slices.IndexFunc(bins, func(e Bin[T]) bool {
-				return e.Weight() == maxBin.Weight()
-			})
+			// Preserve first-bin tie breaking without scanning the bins twice.
+			maxIdx := 0
+			for i := 1; i < len(bins); i++ {
+				if bins[i].Weight() > bins[maxIdx].Weight() {
+					maxIdx = i
+				}
+			}
 
-			bins = slices.Delete(bins, i, i+1)
+			maxBin := bins[maxIdx]
+			bins = slices.Delete(bins, maxIdx, maxIdx+1)
 
 			return maxBin
 		}
