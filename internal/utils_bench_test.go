@@ -73,10 +73,10 @@ func BenchmarkSlicePackerPackEnd(b *testing.B) {
 	}
 }
 
-// BenchmarkSlicePackerLargestBinFirst measures largest-bin eviction with
-// frequent new bins and with mixed weights that sometimes fit existing bins.
 var largestBinFirstBenchmarkSink [][]int64
 
+// BenchmarkSlicePackerLargestBinFirst measures largest-bin eviction with
+// frequent new bins and with mixed weights that sometimes fit existing bins.
 func BenchmarkSlicePackerLargestBinFirst(b *testing.B) {
 	weight := func(v int64) int64 { return v }
 	for _, lookback := range []int{16, 64, 256} {
