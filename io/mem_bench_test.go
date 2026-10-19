@@ -65,3 +65,39 @@ func benchmarkMemFSWalkDir(b *testing.B, nameForFile func(int) string) {
 		})
 	}
 }
+
+// BenchmarkMemFSOpen measures the cost of repeatedly opening stored data
+// without reading the full file. Open should not copy the file's contents.
+func BenchmarkMemFSOpen(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{name: "4KiB", size: 4 << 10},
+		{name: "1MiB", size: 1 << 20},
+		{name: "16MiB", size: 16 << 20},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			memIO := icebergio.NewMemFS()
+			const name = "mem://bucket/file.parquet"
+			if err := memIO.WriteFile(name, make([]byte, tc.size)); err != nil {
+				b.Fatal(err)
+			}
+
+			b.ReportAllocs()
+			var firstByte [1]byte
+			for b.Loop() {
+				file, err := memIO.Open(name)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := file.ReadAt(firstByte[:], 0); err != nil {
+					b.Fatal(err)
+				}
+				if err := file.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

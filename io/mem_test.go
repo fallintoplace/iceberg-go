@@ -18,6 +18,7 @@
 package io_test
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"io/fs"
@@ -85,6 +86,68 @@ func TestMemIO_Create(t *testing.T) {
 	content, err := io.ReadAll(file)
 	require.NoError(t, err)
 	assert.Equal(t, testData, content)
+}
+
+func TestMemIO_OpenSnapshotsSurviveOverwriteAndRemove(t *testing.T) {
+	memIO := icebergio.NewMemFS()
+	input := []byte("original")
+	require.NoError(t, memIO.WriteFile("file.txt", input))
+
+	original, err := memIO.Open("file.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, original.Close()) })
+
+	// The caller cannot mutate stored data after WriteFile returns.
+	input[0] = 'X'
+	require.NoError(t, memIO.WriteFile("file.txt", []byte("updated")))
+
+	updated, err := memIO.Open("file.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, updated.Close()) })
+
+	require.NoError(t, memIO.Remove("file.txt"))
+	_, err = memIO.Open("file.txt")
+	require.ErrorIs(t, err, fs.ErrNotExist)
+
+	buf := make([]byte, len("original"))
+	n, err := original.ReadAt(buf, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(buf), n)
+	require.Equal(t, "original", string(buf))
+
+	newBytes, err := io.ReadAll(updated)
+	require.NoError(t, err)
+	require.Equal(t, "updated", string(newBytes))
+}
+
+func TestMemIO_OpenSnapshotConcurrentWithWrites(t *testing.T) {
+	memIO := icebergio.NewMemFS()
+	original := bytes.Repeat([]byte("a"), 1024)
+	require.NoError(t, memIO.WriteFile("file.txt", original))
+
+	file, err := memIO.Open("file.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, file.Close()) })
+
+	done := make(chan error, 1)
+	go func() {
+		for i := range 100 {
+			if err := memIO.WriteFile("file.txt", bytes.Repeat([]byte{byte(i)}, 1024)); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+
+	buf := make([]byte, len(original))
+	for range 100 {
+		n, err := file.ReadAt(buf, 0)
+		require.NoError(t, err)
+		require.Equal(t, len(buf), n)
+		require.Equal(t, original, buf)
+	}
+	require.NoError(t, <-done)
 }
 
 func TestMemIO_MultipleFiles(t *testing.T) {
