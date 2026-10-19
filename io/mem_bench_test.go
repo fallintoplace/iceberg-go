@@ -43,7 +43,30 @@ func BenchmarkMemFSWalkDirDeep(b *testing.B) {
 	})
 }
 
+func BenchmarkMemFSWalkDirMetadata(b *testing.B) {
+	benchmarkMemFSWalkDirWithCallback(b, func(i int) string {
+		return fmt.Sprintf("mem://bucket/root/dir-%03d/file-%05d.parquet", i%128, i)
+	}, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type() == fs.ModeDir {
+			return nil
+		}
+		_, err = d.Info()
+
+		return err
+	})
+}
+
 func benchmarkMemFSWalkDir(b *testing.B, nameForFile func(int) string) {
+	b.Helper()
+	benchmarkMemFSWalkDirWithCallback(b, nameForFile, func(_ string, _ fs.DirEntry, err error) error {
+		return err
+	})
+}
+
+func benchmarkMemFSWalkDirWithCallback(b *testing.B, nameForFile func(int) string, callback fs.WalkDirFunc) {
 	b.Helper()
 	for _, fileCount := range []int{100, 1_000, 5_000} {
 		b.Run(fmt.Sprintf("files=%d", fileCount), func(b *testing.B) {
@@ -56,9 +79,7 @@ func benchmarkMemFSWalkDir(b *testing.B, nameForFile func(int) string) {
 
 			b.ReportAllocs()
 			for b.Loop() {
-				if err := memIO.WalkDir("mem://bucket/root", func(_ string, _ fs.DirEntry, err error) error {
-					return err
-				}); err != nil {
+				if err := memIO.WalkDir("mem://bucket/root", callback); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -178,7 +178,7 @@ func (m *MemFS) WalkDir(root string, fn fs.WalkDirFunc) error {
 
 		entry := entriesByPath[entryPath]
 		info := &memFileInfo{name: path.Base(entry.path), size: entry.size, isDir: entry.isDir}
-		err := fn(entry.path, fs.FileInfoToDirEntry(info), nil)
+		err := fn(entry.path, info, nil)
 		switch err {
 		case nil:
 		case fs.SkipAll:
@@ -310,6 +310,10 @@ func (fi *memFileInfo) Mode() fs.FileMode {
 func (fi *memFileInfo) ModTime() time.Time { return time.Time{} }
 func (fi *memFileInfo) IsDir() bool        { return fi.isDir }
 func (fi *memFileInfo) Sys() any           { return nil }
+
+// memFileInfo also implements fs.DirEntry to avoid a wrapper per walk entry.
+func (fi *memFileInfo) Type() fs.FileMode          { return fi.Mode().Type() }
+func (fi *memFileInfo) Info() (fs.FileInfo, error) { return fi, nil }
 
 type memWriter struct {
 	fs   *MemFS

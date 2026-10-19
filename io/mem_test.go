@@ -378,6 +378,9 @@ func TestMemIO_WalkDirNestedPrefixes(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		require.Equal(t, info.Name(), d.Name())
+		require.Equal(t, info.IsDir(), d.IsDir())
+		require.Equal(t, info.Mode().Type(), d.Type())
 		got = append(got, visitedEntry{path: path, isDir: d.IsDir(), size: info.Size()})
 
 		return nil
