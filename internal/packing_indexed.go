@@ -57,10 +57,17 @@ func newPackingWeightIndex(capacity int) packingWeightIndex {
 
 func (idx *packingWeightIndex) update(bin int, weight int64) {
 	node := idx.size + bin
+	if idx.weights[node] == weight {
+		return
+	}
 	idx.weights[node] = weight
 
 	for node /= 2; node > 0; node /= 2 {
-		idx.weights[node] = min(idx.weights[node*2], idx.weights[node*2+1])
+		next := min(idx.weights[node*2], idx.weights[node*2+1])
+		if idx.weights[node] == next {
+			break
+		}
+		idx.weights[node] = next
 	}
 }
 
