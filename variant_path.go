@@ -127,6 +127,13 @@ func parseBracketSelector(s, path string) (string, int, error) {
 		return "", 0, fmt.Errorf("%w: unsupported variant path %q (only quoted member selectors like ['name'] are supported)", ErrInvalidArgument, path)
 	}
 
+	// Most normalized paths contain unescaped member names. Clone the name
+	// so bound expressions do not retain the entire input path.
+	if end := strings.IndexAny(s[2:], "\\'"); end >= 0 &&
+		s[end+2] == '\'' && end+3 < len(s) && s[end+3] == ']' {
+		return strings.Clone(s[2 : end+2]), end + 4, nil
+	}
+
 	var b strings.Builder
 	for i := 2; i < len(s); {
 		c := s[i]
