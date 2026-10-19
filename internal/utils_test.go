@@ -109,6 +109,21 @@ func TestBinPacking(t *testing.T) {
 	}
 }
 
+// Equal-weight bins must be evicted in insertion order. Largest-bin-first
+// packing relies on this stable tie break for deterministic output.
+func TestBinPackingLargestFirstStableTies(t *testing.T) {
+	items := []int{0, 1, 2, 3, 4}
+	weights := []int64{8, 8, 5, 8, 8}
+	packer := internal.SlicePacker[int]{
+		TargetWeight:    10,
+		Lookback:        3,
+		LargestBinFirst: true,
+	}
+
+	got := packer.Pack(items, func(i int) int64 { return weights[i] })
+	assert.Equal(t, [][]int{{0}, {1}, {3}, {4}, {2}}, got)
+}
+
 func TestReverseBinPackingLookback(t *testing.T) {
 	intmax := math.MaxInt32
 
