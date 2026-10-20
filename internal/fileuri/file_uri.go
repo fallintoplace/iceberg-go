@@ -35,6 +35,27 @@ type FileURI struct {
 // Parse parses hierarchical and opaque file URIs using the same lexical rules
 // for every FileIO consumer.
 func Parse(name string) (FileURI, error) {
+	// Simple absolute file URLs need no decoding or general URL parsing.
+	// Limit this path to bytes net/url leaves unchanged in both Path and RawPath.
+	const prefix = "file:///"
+	if strings.HasPrefix(name, prefix) {
+		simple := true
+		for i := len(prefix); i < len(name); i++ {
+			c := name[i]
+			if !((c >= 'a' && c <= 'z') ||
+				(c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') ||
+				c == '/' || c == '_' || c == '-' || c == '.' || c == ':' || c == '~') {
+				simple = false
+				break
+			}
+		}
+		if simple {
+			localPath := name[len("file://"):]
+			return FileURI{parsed: url.URL{Scheme: "file", Path: localPath}, path: localPath}, nil
+		}
+	}
+
 	parsed, err := url.Parse(name)
 	if err != nil {
 		return FileURI{}, err
