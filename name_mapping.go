@@ -55,10 +55,16 @@ func (m *MappedField) GetField(field string) *MappedField {
 
 func (m *MappedField) Len() int { return len(m.Fields) }
 
-func (m *MappedField) String() string {
-	var bldr strings.Builder
+// appendString writes a mapped field directly into the caller's builder.
+// Nested fields share the same builder to avoid intermediate strings.
+func (m *MappedField) appendString(bldr *strings.Builder) {
 	bldr.WriteString("([")
-	bldr.WriteString(strings.Join(m.Names, ", "))
+	for i, name := range m.Names {
+		if i != 0 {
+			bldr.WriteString(", ")
+		}
+		bldr.WriteString(name)
+	}
 	bldr.WriteString("] -> ")
 
 	if m.FieldID != nil {
@@ -69,15 +75,20 @@ func (m *MappedField) String() string {
 
 	if len(m.Fields) > 0 {
 		bldr.WriteByte(' ')
-		for i, f := range m.Fields {
+		for i := range m.Fields {
 			if i != 0 {
 				bldr.WriteString(", ")
 			}
-			bldr.WriteString(f.String())
+			m.Fields[i].appendString(bldr)
 		}
 	}
 
 	bldr.WriteByte(')')
+}
+
+func (m *MappedField) String() string {
+	var bldr strings.Builder
+	m.appendString(&bldr)
 
 	return bldr.String()
 }
@@ -87,9 +98,9 @@ type NameMapping []MappedField
 func (nm NameMapping) String() string {
 	var bldr strings.Builder
 	bldr.WriteString("[\n")
-	for _, f := range nm {
+	for i := range nm {
 		bldr.WriteByte('\t')
-		bldr.WriteString(f.String())
+		nm[i].appendString(&bldr)
 		bldr.WriteByte('\n')
 	}
 	bldr.WriteByte(']')
