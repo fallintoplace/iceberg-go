@@ -19,7 +19,6 @@ package table
 import (
 	"context"
 	"fmt"
-	"iter"
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -39,13 +38,7 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 	}
 
 	snapshots := i.tbl.Metadata().Snapshots()
-	var readSnapshotManifests func(Snapshot) (iter.Seq[iceberg.ManifestFile], error)
-	if len(snapshots) > 0 {
-		provider := i.tbl.ManifestProvider()
-		readSnapshotManifests = func(snapshot Snapshot) (iter.Seq[iceberg.ManifestFile], error) {
-			return provider.Manifests(ctx, snapshot)
-		}
-	}
+	provider := i.tbl.ManifestProvider()
 
 	return array.ReaderFromIter(arrowSchema, func(yield func(arrow.RecordBatch, error) bool) {
 		bldr := array.NewRecordBuilder(i.alloc, arrowSchema)
@@ -74,20 +67,19 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 			_ = yield(nil, err)
 		}
 
-		for _, snapshot := range snapshots {
+		for snapshot, result := range prefetchInspectSnapshotManifests(ctx, provider, snapshots) {
 			if err := ctx.Err(); err != nil {
 				yieldError(err)
 
 				return
 			}
-
-			manifests, err := readSnapshotManifests(snapshot)
-			if err != nil {
+			if result.err != nil {
 				yieldError(fmt.Errorf("inspect all manifests: read snapshot %d manifests: %w",
-					snapshot.SnapshotID, err))
+					snapshot.SnapshotID, result.err))
 
 				return
 			}
+			manifests := result.manifests
 
 			// Gather manifests into a reused chunk so each record batch is
 			// filled to inspectRecordBatchSize across snapshot boundaries.

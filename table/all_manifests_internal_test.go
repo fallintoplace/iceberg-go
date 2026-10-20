@@ -171,7 +171,7 @@ func tableWithManifestLists(t *testing.T, snapshotCount int) (*Table, []string) 
 	return tableWithManifestListsUsingIO(t, snapshotCount, nil)
 }
 
-func tableWithManifestListsUsingIO(t *testing.T, snapshotCount int, readIOFn func(*iceio.MemFS) iceio.IO) (*Table, []string) {
+func tableWithManifestListsUsingIO(t testing.TB, snapshotCount int, readIOFn func(*iceio.MemFS) iceio.IO) (*Table, []string) {
 	t.Helper()
 
 	memFS := iceio.NewMemFS()
