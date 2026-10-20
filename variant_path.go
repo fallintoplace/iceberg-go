@@ -127,6 +127,15 @@ func parseBracketSelector(s, path string) (string, int, error) {
 		return "", 0, fmt.Errorf("%w: unsupported variant path %q (only quoted member selectors like ['name'] are supported)", ErrInvalidArgument, path)
 	}
 
+	// Plain quoted members can use the immutable path string directly.
+	// Escaped members still go through the decoder below.
+	if end := strings.IndexAny(s[2:], "'\\"); end >= 0 {
+		end += 2
+		if s[end] == '\'' && end+1 < len(s) && s[end+1] == ']' {
+			return s[2:end], end + 2, nil
+		}
+	}
+
 	var b strings.Builder
 	for i := 2; i < len(s); {
 		c := s[i]
