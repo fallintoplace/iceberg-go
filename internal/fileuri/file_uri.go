@@ -35,6 +35,18 @@ type FileURI struct {
 // Parse parses hierarchical and opaque file URIs using the same lexical rules
 // for every FileIO consumer.
 func Parse(name string) (FileURI, error) {
+	// Plain hierarchical file paths need no percent-decoding or URL parsing.
+	// Keep url.Parse for authorities, escapes, queries, and other URI forms.
+	if strings.HasPrefix(name, "file:///") {
+		filePath := name[len("file://"):]
+		if isUnescapedFilePath(filePath) {
+			return FileURI{
+				parsed: url.URL{Scheme: "file", Path: filePath},
+				path:   filePath,
+			}, nil
+		}
+	}
+
 	parsed, err := url.Parse(name)
 	if err != nil {
 		return FileURI{}, err
@@ -52,6 +64,26 @@ func Parse(name string) (FileURI, error) {
 	}
 
 	return FileURI{parsed: *parsed, path: localPath}, nil
+}
+
+// isUnescapedFilePath accepts only characters whose representation is
+// unchanged by net/url. Everything else uses the full URL parser.
+func isUnescapedFilePath(filePath string) bool {
+	for i := 0; i < len(filePath); i++ {
+		c := filePath[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+
+		switch c {
+		case '/', '-', '_', '.', '~', ':':
+			continue
+		}
+
+		return false
+	}
+
+	return true
 }
 
 // Host returns the URI authority without changing its spelling.
