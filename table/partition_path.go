@@ -18,7 +18,6 @@
 package table
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/apache/iceberg-go"
@@ -53,8 +52,36 @@ func (p partitionPathPlan) format(data iceberg.StructLike) string {
 		sb.WriteString(field.escapedName)
 		sb.WriteByte('=')
 		value := field.transform.ToHumanStrType(field.resultType, data.Get(i))
-		sb.WriteString(url.QueryEscape(value))
+		writeQueryEscaped(&sb, value)
 	}
 
 	return sb.String()
+}
+
+// writeQueryEscaped appends a value with net/url.QueryEscape's encoding rules
+// without allocating an intermediate string. Escape each byte so UTF-8
+// sequences and invalid UTF-8 are handled exactly like QueryEscape.
+func writeQueryEscaped(sb *strings.Builder, value string) {
+	const upperHex = "0123456789ABCDEF"
+	start := 0
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if c >= 'a' && c <= 'z' ||
+			c >= 'A' && c <= 'Z' ||
+			c >= '0' && c <= '9' ||
+			c == '-' || c == '_' || c == '.' || c == '~' {
+			continue
+		}
+
+		sb.WriteString(value[start:i])
+		if c == ' ' {
+			sb.WriteByte('+')
+		} else {
+			sb.WriteByte('%')
+			sb.WriteByte(upperHex[c>>4])
+			sb.WriteByte(upperHex[c&15])
+		}
+		start = i + 1
+	}
+	sb.WriteString(value[start:])
 }

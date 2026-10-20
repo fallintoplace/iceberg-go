@@ -18,6 +18,9 @@
 package table
 
 import (
+	"math/rand"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -78,4 +81,32 @@ func TestPartitionPathPlanMatchesPartitionToPath(t *testing.T) {
 	assert.Equal(t,
 		"created+ts%2Ftz=2024-01-15T10%3A30%3A00%2B00%3A00/str%23part=partition%2Fvalue/id_bucket=7/missing=null/unknown=42",
 		plan.pathPlan.format(record))
+}
+
+func TestWriteQueryEscapedMatchesQueryEscape(t *testing.T) {
+	values := []string{
+		"", "berlin", "berlin/east +%?#", "München/東京", "a\\x00b",
+		"spaces   ", "slashes///", "a-b_c.d~e", strings.Repeat("a/b c", 100),
+	}
+	for i := 0; i < 256; i++ {
+		values = append(values, string([]byte{byte(i)}))
+	}
+
+	rng := rand.New(rand.NewSource(42))
+	for i := 0; i < 1000; i++ {
+		value := make([]byte, rng.Intn(128))
+		_, _ = rng.Read(value)
+		values = append(values, string(value))
+	}
+
+	for _, value := range values {
+		for _, prefix := range []string{"", "prefix/"} {
+			var sb strings.Builder
+			sb.WriteString(prefix)
+			writeQueryEscaped(&sb, value)
+			if want := prefix + url.QueryEscape(value); sb.String() != want {
+				t.Fatalf("value %q: got %q, want %q", value, sb.String(), want)
+			}
+		}
+	}
 }
