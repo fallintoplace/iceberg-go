@@ -2531,8 +2531,18 @@ func (as *arrowScan) recordsFromTask(ctx context.Context, task tblutils.Enumerat
 		pipeline = append(pipeline, filterFunc)
 	}
 
+	flatProjection, err := newFlatReadProjection(
+		as.projectedSchema, readSchema, as.useLargeTypes, invariants.tableProperties)
+	if err != nil {
+		return err
+	}
+
 	pipeline = append(pipeline, func(r arrow.RecordBatch) (arrow.RecordBatch, error) {
 		defer r.Release()
+
+		if projected, ok := flatProjection.project(r); ok {
+			return projected, nil
+		}
 
 		return ToRequestedSchema(ctx, as.projectedSchema, readSchema, r, SchemaOptions{
 			UseLargeTypes:   as.useLargeTypes,
