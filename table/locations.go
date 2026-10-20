@@ -107,7 +107,7 @@ type objectStoreLocationProvider struct {
 	includePartitionPaths bool
 }
 
-func computeHash(dataFileName string) string {
+func computeHash(dataFileName string) [hashPathLength]byte {
 	hashCode := murmur3.Sum32([]byte(dataFileName)) & ((1 << hashBits) - 1)
 
 	// Format the hash directly into the final directory layout. The fixed
@@ -125,7 +125,7 @@ func computeHash(dataFileName string) string {
 	copy(hashPath[3*entropyDirLength+3:4*entropyDirLength+3], binaryHashNibbles[((hashCode>>(hashBits-4*entropyDirLength))&hashNibbleMask)*entropyDirLength:])
 	copy(hashPath[4*entropyDirLength+3:5*entropyDirLength+3], binaryHashNibbles[(hashCode&hashNibbleMask)*entropyDirLength:])
 
-	return string(hashPath[:])
+	return hashPath
 }
 
 func (p *objectStoreLocationProvider) NewDataLocation(dataFileName string) string {
@@ -133,12 +133,23 @@ func (p *objectStoreLocationProvider) NewDataLocation(dataFileName string) strin
 		return p.simpleLocationProvider.NewDataLocation(dataFileName)
 	}
 
-	hashedPath := computeHash(dataFileName)
+	hashPath := computeHash(dataFileName)
+	base := strings.TrimRight(p.dataPath, "/")
+
+	// Reserve the complete result, avoiding a temporary hash-path string.
+	var builder strings.Builder
+	builder.Grow(len(base) + 1 + len(hashPath) + 1 + len(dataFileName))
+	builder.WriteString(base)
+	builder.WriteByte('/')
+	_, _ = builder.Write(hashPath[:])
 	if p.includePartitionPaths {
-		return joinLocationPath(p.dataPath, hashedPath, dataFileName)
+		builder.WriteByte('/')
 	} else {
-		return joinLocationPath(p.dataPath, hashedPath+"-"+dataFileName)
+		builder.WriteByte('-')
 	}
+	builder.WriteString(dataFileName)
+
+	return builder.String()
 }
 
 func newObjectStoreLocationProvider(tableLoc string, tableProps iceberg.Properties) *objectStoreLocationProvider {
