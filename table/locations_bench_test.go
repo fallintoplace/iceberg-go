@@ -29,3 +29,27 @@ func BenchmarkComputeHash(b *testing.B) {
 		computeHashBenchmarkSink = computeHash(dataFileName)
 	}
 }
+
+var joinLocationPathBenchmarkSink string
+
+func BenchmarkJoinLocationPath(b *testing.B) {
+	cases := []struct {
+		name     string
+		location string
+		elem     []string
+	}{
+		{name: "metadata_1part", location: "s3://warehouse/db/table/metadata", elem: []string{"00025-f32a1111.metadata.json"}},
+		{name: "object_store_2parts", location: "s3://warehouse/db/table/data", elem: []string{"0101/0110/1001/10110010", "part-00001-8a32e.snappy.parquet"}},
+		{name: "three_parts", location: "s3://warehouse/db/table/data", elem: []string{"p=1", "q=blue", "part-00001.parquet"}},
+		{name: "trailing_2parts", location: "s3://warehouse/db/table/data///", elem: []string{"0101/0110/1001/10110010", "part-00001-8a32e.snappy.parquet"}},
+		{name: "zero_parts", location: "s3://warehouse/db/table/data"},
+	}
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				joinLocationPathBenchmarkSink = joinLocationPath(tc.location, tc.elem...)
+			}
+		})
+	}
+}
