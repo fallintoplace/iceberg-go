@@ -61,10 +61,12 @@ type equalityDeleteSet struct {
 	fieldIDs []int
 	colNames []string
 
-	singleInt64Once sync.Once
-	singleInt64     *singleInt64EqualityDeleteSet
-	singleBytesOnce sync.Once
-	singleBytes     *singleBytesEqualityDeleteSet
+	singleInt64Once  sync.Once
+	singleInt64      *singleInt64EqualityDeleteSet
+	singleBytesOnce  sync.Once
+	singleBytes      *singleBytesEqualityDeleteSet
+	leadingInt64Once sync.Once
+	leadingInt64     *leadingInt64Prefixes
 }
 
 type arrowFieldRef struct {
@@ -1382,6 +1384,54 @@ func (e *equalityDeleteSet) singleInt64Set(fileSchema *iceberg.Schema) *singleIn
 	return e.singleInt64
 }
 
+
+const maxLeadingInt64PrefixKeys = 65_536
+
+// leadingInt64Prefixes is a conservative membership prefilter for composite
+// equality deletes. Every possible match still uses the canonical full key.
+type leadingInt64Prefixes struct {
+	values  set[uint64]
+	hasNull bool
+}
+
+// leadingInt64PrefixSet is used only for a top-level Int64 first field.
+// Invalid key encodings disable the optimization. Derived indexes are
+// immutable after construction and safe for concurrent scans.
+func (e *equalityDeleteSet) leadingInt64PrefixSet() *leadingInt64Prefixes {
+	// Bound persistent index memory even when many delete files are scanned.
+	if len(e.fieldIDs) < 2 || len(e.keys) == 0 || len(e.keys) > maxLeadingInt64PrefixKeys {
+		return nil
+	}
+
+	e.leadingInt64Once.Do(func() {
+		index := &leadingInt64Prefixes{values: make(set[uint64], len(e.keys))}
+		for key := range e.keys {
+			if len(key) < 2 {
+				return
+			}
+			switch key[0] {
+			case 0:
+				// The second field follows the single-byte null tag.
+				if key[1] > 1 {
+					return
+				}
+				index.hasNull = true
+			case 1:
+				// Non-null Int64: tag, eight big-endian bytes, next tag.
+				if len(key) < 10 || key[9] > 1 {
+					return
+				}
+				index.values[binary.BigEndian.Uint64([]byte(key[1:9]))] = struct{}{}
+			default:
+				return
+			}
+		}
+		e.leadingInt64 = index
+	})
+
+	return e.leadingInt64
+}
+
 type singleBytesEqualityDeleteSet struct {
 	keys    set[string]
 	hasNull bool
@@ -1611,6 +1661,20 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 		}
 	}
 
+	// A selective leading Int64 rules out most composite keys without
+	// serializing the remaining fields of a row.
+	leadingInt64Sets := make([]*leadingInt64Prefixes, len(eqDeleteSets))
+	for i, eqDel := range eqDeleteSets {
+		if len(fieldRefs[i]) < 2 || len(fieldRefs[i][0].path) != 1 || fileSchema == nil {
+			continue
+		}
+		if field, ok := fileSchema.FindFieldByID(eqDel.fieldIDs[0]); ok {
+			if _, ok := field.Type.(iceberg.Int64Type); ok {
+				leadingInt64Sets[i] = eqDel.leadingInt64PrefixSet()
+			}
+		}
+	}
+
 	return func(r arrow.RecordBatch) (arrow.RecordBatch, error) {
 		defer r.Release()
 
@@ -1637,6 +1701,26 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 				}
 			}
 
+			// A physical-type mismatch must use the existing generic encoder.
+			prefix := leadingInt64Sets[setIdx]
+			var prefixValues []int64
+			var nullablePrefix *array.Int64
+			if prefix != nil {
+				column, _, err := arrowArraysAtField(
+					r, fieldRefs[setIdx][0], eqDel.fieldIDs[0], eqDel.colNames[0], dataFilePath)
+				if err != nil {
+					return nil, err
+				}
+				if values, ok := column.(*array.Int64); ok {
+					prefixValues = values.Int64Values()
+					if values.NullN() != 0 {
+						nullablePrefix = values
+					}
+				} else {
+					prefix = nil
+				}
+			}
+
 			encoders := make([]colEncoder, len(eqDel.colNames))
 			for i, name := range eqDel.colNames {
 				var err error
@@ -1649,6 +1733,16 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 			for row := range numRows {
 				if mask.bits != nil && !bitutil.BitIsSet(mask.bits, row) {
 					continue
+				}
+
+				if prefix != nil {
+					if nullablePrefix != nil && nullablePrefix.IsNull(row) {
+						if !prefix.hasNull {
+							continue
+						}
+					} else if _, ok := prefix.values[uint64(prefixValues[row])]; !ok {
+						continue
+					}
 				}
 
 				keyBuf.Reset()
