@@ -142,10 +142,16 @@ func (m *MemFS) WalkDir(root string, fn fs.WalkDirFunc) error {
 			filePath = key
 			start = len(key) - len(relative)
 		}
-		for i := range len(relative) {
-			if relative[i] == '/' {
-				addEntry(walkEntry{path: filePath[:start+i], isDir: true})
+		// Stop at a known directory: all its ancestors are already present.
+		for i := len(relative) - 1; i >= 0; i-- {
+			if relative[i] != '/' {
+				continue
 			}
+			dirPath := filePath[:start+i]
+			if entry, ok := entriesByPath[dirPath]; ok && entry.isDir {
+				break
+			}
+			addEntry(walkEntry{path: dirPath, isDir: true})
 		}
 		addEntry(walkEntry{path: filePath, size: int64(len(data))})
 	}
