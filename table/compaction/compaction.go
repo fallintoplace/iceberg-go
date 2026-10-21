@@ -193,38 +193,28 @@ func (cfg Config) PlanCompaction(tasks []table.FileScanTask) (Plan, error) {
 		return Plan{}, fmt.Errorf("invalid compaction config: %w", err)
 	}
 
-	plan := Plan{
-		TotalInputFiles: len(tasks),
-	}
+	plan := Plan{TotalInputFiles: len(tasks)}
 
-	for _, t := range tasks {
-		plan.TotalInputBytes += t.File.FileSizeBytes()
-	}
-
-	// Group tasks by partition key.
-	type partitionBucket struct {
-		key        string
-		candidates []table.FileScanTask
-	}
-	partitions := make(map[string]partitionBucket)
+	// Only candidates need a partition key. Most compaction scans contain
+	// healthy files, so avoid serializing their partition tuples and creating
+	// buckets that can never contribute to a rewrite group.
+	partitions := make(map[string][]table.FileScanTask)
 	var partitionOrder []string
 
 	for _, t := range tasks {
-		key := partitionBucketKey(t.File.SpecID(), internal.BorrowedDataFilePartition(t.File))
-		bucket, ok := partitions[key]
-		if !ok {
-			bucket = partitionBucket{key: key}
-			partitionOrder = append(partitionOrder, key)
-		}
-
+		plan.TotalInputBytes += t.File.FileSizeBytes()
 		if !cfg.isCandidate(t) {
 			plan.SkippedFiles++
-			partitions[key] = bucket
 
 			continue
 		}
-		bucket.candidates = append(bucket.candidates, t)
-		partitions[key] = bucket
+
+		key := partitionBucketKey(t.File.SpecID(), internal.BorrowedDataFilePartition(t.File))
+		candidates, ok := partitions[key]
+		if !ok {
+			partitionOrder = append(partitionOrder, key)
+		}
+		partitions[key] = append(candidates, t)
 	}
 
 	// Bin-pack candidates per partition.
@@ -235,14 +225,14 @@ func (cfg Config) PlanCompaction(tasks []table.FileScanTask) (Plan, error) {
 	}
 
 	for _, key := range partitionOrder {
-		bucket := partitions[key]
-		if len(bucket.candidates) < int(cfg.MinInputFiles) {
-			plan.SkippedFiles += len(bucket.candidates)
+		candidates := partitions[key]
+		if len(candidates) < int(cfg.MinInputFiles) {
+			plan.SkippedFiles += len(candidates)
 
 			continue
 		}
 
-		bins := packer.PackEnd(bucket.candidates, func(t table.FileScanTask) int64 {
+		bins := packer.PackEnd(candidates, func(t table.FileScanTask) int64 {
 			return t.File.FileSizeBytes()
 		})
 
