@@ -237,6 +237,92 @@ func TestPairInt64IndexConcurrentBuild(t *testing.T) {
 	}
 }
 
+func TestPairInt64IndexSkipsUnusedNonNullMap(t *testing.T) {
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer mem.AssertSize(t, 0)
+	rec := buildBenchRecordInt(mem, 128)
+	defer rec.Release()
+
+	for _, tc := range []struct {
+		name string
+		keys set[string]
+	}{
+		{name: "empty", keys: make(set[string])},
+		{name: "first-null-only", keys: func() set[string] {
+			keys := make(set[string], 100)
+			var buf bytes.Buffer
+			for i := range 100 {
+				buf.Reset()
+				buf.WriteByte(0)
+				buf.WriteByte(1)
+				bufPutUint64(&buf, uint64(i))
+				keys[buf.String()] = struct{}{}
+			}
+			return keys
+		}()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			del := &equalityDeleteSet{keys: tc.keys, fieldIDs: []int{1, 2}}
+			idx := del.pairInt64Set(benchIntFileSchema())
+			require.NotNil(t, idx)
+			assert.Nil(t, idx.keys, "non-null map should stay unallocated")
+
+			var mask equalityDeleteMask
+			defer mask.release()
+			assert.True(t, mask.applyPairInt64(rec.Column(0), rec.Column(1), idx, mem))
+			assert.Nil(t, mask.buffer, "no rows can match")
+		})
+	}
+}
+
+func TestProcessEqualityDeletesPairInt64MultipleSets(t *testing.T) {
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer mem.AssertSize(t, 0)
+	rec := buildBenchRecordInt(mem, 10)
+	defer rec.Release()
+
+	buildSets := func(useGeneric bool) []*equalityDeleteSet {
+		var sets []*equalityDeleteSet
+		for _, deletedRows := range [][]int{{1, 3, 5}, {3, 7}} {
+			keys := make(set[string], len(deletedRows))
+			var buf bytes.Buffer
+			for _, row := range deletedRows {
+				buf.Reset()
+				encodeArrowValue(&buf, rec.Column(0), row)
+				encodeArrowValue(&buf, rec.Column(1), row)
+				keys[buf.String()] = struct{}{}
+			}
+			del := &equalityDeleteSet{
+				keys: keys, fieldIDs: []int{1, 2}, colNames: []string{"id", "category"},
+			}
+			if useGeneric {
+				del.pairInt64Once.Do(func() {})
+			}
+			sets = append(sets, del)
+		}
+		return sets
+	}
+	ctx := compute.WithAllocator(t.Context(), mem)
+	generic, err := processEqualityDeletesColumnarForFile(
+		ctx, buildSets(true), benchIntFileSchema(), "data.parquet")
+	require.NoError(t, err)
+	typed, err := processEqualityDeletesColumnarForFile(
+		ctx, buildSets(false), benchIntFileSchema(), "data.parquet")
+	require.NoError(t, err)
+
+	rec.Retain()
+	want, err := generic(rec)
+	require.NoError(t, err)
+	defer want.Release()
+	rec.Retain()
+	got, err := typed(rec)
+	require.NoError(t, err)
+	defer got.Release()
+
+	assert.True(t, array.RecordEqual(want, got))
+	assert.EqualValues(t, 6, got.NumRows())
+}
+
 func BenchmarkProcessEqualityDeletesPairInt64(b *testing.B) {
 	for _, mode := range []string{"generic", "typed"} {
 		b.Run(mode, func(b *testing.B) {
