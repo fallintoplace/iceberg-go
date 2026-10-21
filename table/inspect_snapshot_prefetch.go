@@ -41,15 +41,46 @@ func streamSnapshotManifests(
 	load func(context.Context, Snapshot) (snapshotManifestSet, error),
 	yield func(iceberg.ManifestFile, error) bool,
 ) {
+	streamSnapshotManifestLists(ctx, snapshots, cached, load, true,
+		func(_ Snapshot, manifest iceberg.ManifestFile, err error) bool {
+			return yield(manifest, err)
+		})
+}
+
+// streamSnapshotManifestLists also supports all_manifests, where every
+// snapshot's references must be returned, even for shared manifest paths.
+// The snapshot is carried with each result so a prefetched list retains the
+// correct reference_snapshot_id.
+func streamSnapshotManifestLists(
+	ctx context.Context,
+	snapshots []Snapshot,
+	cached func(Snapshot) (snapshotManifestSet, bool),
+	load func(context.Context, Snapshot) (snapshotManifestSet, error),
+	deduplicate bool,
+	yield func(Snapshot, iceberg.ManifestFile, error) bool,
+) {
 	if len(snapshots) == 0 {
 		return
 	}
 	if err := ctx.Err(); err != nil {
-		yield(nil, err)
+		yield(Snapshot{}, nil, err)
 
 		return
 	}
-	seen := make(map[string]struct{})
+	var seen map[string]struct{}
+	if deduplicate {
+		seen = make(map[string]struct{})
+	}
+	emit := func(snapshot Snapshot, manifest iceberg.ManifestFile) bool {
+		if deduplicate {
+			path := manifest.FilePath()
+			if _, ok := seen[path]; ok {
+				return true
+			}
+			seen[path] = struct{}{}
+		}
+		return yield(snapshot, manifest, nil)
+	}
 	if len(snapshots) == 1 {
 		set, ok := snapshotManifestSet{}, false
 		if cached != nil {
@@ -59,18 +90,13 @@ func streamSnapshotManifests(
 			var err error
 			set, err = load(ctx, snapshots[0])
 			if err != nil {
-				yield(nil, fmt.Errorf("read snapshot %d manifests: %w", snapshots[0].SnapshotID, err))
+				yield(snapshots[0], nil, fmt.Errorf("read snapshot %d manifests: %w", snapshots[0].SnapshotID, err))
 
 				return
 			}
 		}
 		for _, manifest := range set.borrowAllManifests() {
-			path := manifest.FilePath()
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			if !yield(manifest, nil) {
+			if !emit(snapshots[0], manifest) {
 				return
 			}
 		}
@@ -98,17 +124,12 @@ func streamSnapshotManifests(
 
 			for i := range count {
 				if err := ctx.Err(); err != nil {
-					yield(nil, err)
+					yield(Snapshot{}, nil, err)
 
 					return
 				}
 				for _, manifest := range sets[i].borrowAllManifests() {
-					path := manifest.FilePath()
-					if _, ok := seen[path]; ok {
-						continue
-					}
-					seen[path] = struct{}{}
-					if !yield(manifest, nil) {
+					if !emit(snapshots[start+i], manifest) {
 						return
 					}
 				}
@@ -170,7 +191,7 @@ func streamSnapshotManifests(
 
 	for i, snapshot := range snapshots {
 		if err := readCtx.Err(); err != nil {
-			yield(nil, err)
+			yield(Snapshot{}, nil, err)
 
 			return
 		}
@@ -183,7 +204,7 @@ func streamSnapshotManifests(
 		} else {
 			select {
 			case <-readCtx.Done():
-				yield(nil, readCtx.Err())
+				yield(snapshot, nil, readCtx.Err())
 
 				return
 			case result = <-results[slot]:
@@ -191,7 +212,7 @@ func streamSnapshotManifests(
 		}
 
 		if result.err != nil {
-			yield(nil, fmt.Errorf("read snapshot %d manifests: %w", snapshot.SnapshotID, result.err))
+			yield(snapshot, nil, fmt.Errorf("read snapshot %d manifests: %w", snapshot.SnapshotID, result.err))
 
 			return
 		}
@@ -212,12 +233,7 @@ func streamSnapshotManifests(
 		}
 
 		for _, manifest := range result.set.borrowAllManifests() {
-			path := manifest.FilePath()
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			if !yield(manifest, nil) {
+			if !emit(snapshot, manifest) {
 				return
 			}
 		}
