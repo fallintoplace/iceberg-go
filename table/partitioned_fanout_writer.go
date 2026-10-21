@@ -526,6 +526,87 @@ func sameAdjacentPartitionSource(column arrow.Array, row int) bool {
 	}
 }
 
+
+// partitionTransformValueCache avoids rehashing repeated, non-adjacent string
+// and binary values for bucket and truncate transforms. A cache belongs to
+// exactly one field in one record batch: Arrow value buffers are only borrowed
+// while that batch is being partitioned.
+const (
+	maxPartitionTransformCacheEntries  = 256
+	maxPartitionTransformCacheKeyBytes = 64 << 10
+	maxPartitionTransformCacheKeySize  = 1024
+)
+
+type partitionTransformValueCache struct {
+	values   map[string]any
+	keyBytes int
+	disabled bool
+}
+
+func cacheablePartitionTransform(transform iceberg.Transform, column arrow.Array) bool {
+	switch transform.(type) {
+	case iceberg.BucketTransform, iceberg.TruncateTransform:
+	default:
+		return false
+	}
+
+	switch column.(type) {
+	case *array.String, *array.LargeString, *array.Binary, *array.LargeBinary:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *partitionTransformValueCache) valueAt(
+	column arrow.Array, row int, convert func(arrow.Array, int) (any, error),
+) (any, error) {
+	// The caller stops consulting the cache after it reaches its budget.
+	var key string
+	switch values := column.(type) {
+	case *array.String:
+		key = values.Value(row)
+	case *array.LargeString:
+		key = values.Value(row)
+	case *array.Binary:
+		key = string(values.Value(row))
+	case *array.LargeBinary:
+		key = string(values.Value(row))
+	default:
+		return convert(column, row)
+	}
+
+	if value, found := c.values[key]; found {
+		return value, nil
+	}
+
+	value, err := convert(column, row)
+	if err != nil {
+		return nil, err
+	}
+
+	// Do not retain large individual values. Disable caching when too many
+	// distinct keys arrive so high-cardinality input uses the original path.
+	if len(key) > maxPartitionTransformCacheKeySize {
+		return value, nil
+	}
+	if len(c.values) >= maxPartitionTransformCacheEntries ||
+		c.keyBytes+len(key) > maxPartitionTransformCacheKeyBytes {
+		c.values = nil
+		c.disabled = true
+
+		return value, nil
+	}
+
+	if c.values == nil {
+		c.values = make(map[string]any)
+	}
+	c.values[key] = value
+	c.keyBytes += len(key)
+
+	return value, nil
+}
+
 func (p *partitionExtractionPlan) getRecordPartitions(record arrow.RecordBatch) ([]*partitionInfo, error) {
 	// Preserve support for iterators whose batch schema changes. The usual path compares
 	// schema pointers; equivalent independently-built schemas also reuse the plan.
@@ -560,6 +641,19 @@ func (p *partitionExtractionPlan) getRecordPartitions(record arrow.RecordBatch) 
 		}
 	}
 
+	// Expensive string/binary transforms benefit from reusing results even
+	// when equal source values are separated by other partition values.
+	var transformCaches []*partitionTransformValueCache
+	for i, field := range p.fields {
+		if topLevelColumns[i] == nil || !cacheablePartitionTransform(field.sourceField.Transform, topLevelColumns[i]) {
+			continue
+		}
+		if transformCaches == nil {
+			transformCaches = make([]*partitionTransformValueCache, len(p.fields))
+		}
+		transformCaches[i] = &partitionTransformValueCache{}
+	}
+
 	for row := range record.NumRows() {
 		unchanged := row > 0
 		for i, fieldInfo := range p.fields {
@@ -584,7 +678,17 @@ func (p *partitionExtractionPlan) getRecordPartitions(record arrow.RecordBatch) 
 
 			unchanged = false
 			if ok {
-				value, err := fieldInfo.valueAt(col, int(row))
+				var value any
+				var err error
+				if transformCaches != nil && transformCaches[i] != nil {
+					cache := transformCaches[i]
+					value, err = cache.valueAt(col, int(row), fieldInfo.valueAt)
+					if cache.disabled {
+						transformCaches[i] = nil
+					}
+				} else {
+					value, err = fieldInfo.valueAt(col, int(row))
+				}
 				if err != nil {
 					return nil, fmt.Errorf(
 						"failed to convert source column %q (field ID %d) from Arrow type %s to Iceberg type %s: %w",
