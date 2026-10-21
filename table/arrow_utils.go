@@ -1865,6 +1865,17 @@ func filesToDataFiles(ctx context.Context, fileIO iceio.IO, meta *MetadataBuilde
 
 	currentSchema, currentSpec := meta.CurrentSchema(), *partitionSpec
 
+	// A bulk AddFiles call converts every footer against the same schema and
+	// metrics properties. Build these read-only lookup maps once and share them
+	// with the workers instead of rebuilding them for every file.
+	var plan *addFilesConversionPlan
+	if len(filePaths) > 1 {
+		plan, err = newAddFilesConversionPlan(currentSchema, meta.props)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	dataFiles := make([]iceberg.DataFile, len(filePaths))
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.SetLimit(concurrency)
@@ -1884,7 +1895,7 @@ func filesToDataFiles(ctx context.Context, fileIO iceio.IO, meta *MetadataBuilde
 			// Pass 0 so AddFiles does not claim sort_order_id on files
 			// it did not write (#1184). Callers that know the file's
 			// sort layout use FileToDataFile with an explicit id.
-			dataFiles[i] = fileToDataFile(ctx, fileIO, filePath, currentSchema, currentSpec, 0, meta.props)
+			dataFiles[i] = fileToDataFileWithPlan(ctx, fileIO, filePath, currentSchema, currentSpec, 0, meta.props, plan)
 
 			return nil
 		})
@@ -1920,7 +1931,37 @@ func FileToDataFile(ctx context.Context, fileIO iceio.IO, filePath string, curre
 	return fileToDataFile(ctx, fileIO, filePath, currentSchema, currentSpec, sortOrderID, props), nil
 }
 
+// addFilesConversionPlan contains schema-wide values that are never modified
+// while processing one AddFiles batch. Parquet's stats resolver only reads
+// these maps; each file still builds its own column statistics and aggregators.
+type addFilesConversionPlan struct {
+	statsCols       map[int]tblutils.StatisticsCollector
+	pathMapping     map[string]int
+	variantFieldIDs map[int]struct{}
+}
+
+func newAddFilesConversionPlan(schema *iceberg.Schema, props iceberg.Properties) (*addFilesConversionPlan, error) {
+	statsCols, err := computeStatsPlan(schema, props)
+	if err != nil {
+		return nil, err
+	}
+	pathMapping, err := tblutils.GetFileFormat(iceberg.ParquetFile).PathToIDMapping(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	return &addFilesConversionPlan{
+		statsCols:       statsCols,
+		pathMapping:     pathMapping,
+		variantFieldIDs: tblutils.VariantFieldIDsFromSchema(schema),
+	}, nil
+}
+
 func fileToDataFile(ctx context.Context, fileIO iceio.IO, filePath string, currentSchema *iceberg.Schema, currentSpec iceberg.PartitionSpec, sortOrderID int, props iceberg.Properties) iceberg.DataFile {
+	return fileToDataFileWithPlan(ctx, fileIO, filePath, currentSchema, currentSpec, sortOrderID, props, nil)
+}
+
+func fileToDataFileWithPlan(ctx context.Context, fileIO iceio.IO, filePath string, currentSchema *iceberg.Schema, currentSpec iceberg.PartitionSpec, sortOrderID int, props iceberg.Properties, plan *addFilesConversionPlan) iceberg.DataFile {
 	format := tblutils.FormatFromFileName(filePath)
 	rdr := must(format.Open(ctx, fileIO, filePath))
 	defer rdr.Close()
@@ -1937,11 +1978,27 @@ func fileToDataFile(ctx context.Context, fileIO iceio.IO, filePath string, curre
 			TableProperties: props,
 		}))
 	}
+	var statsCols map[int]tblutils.StatisticsCollector
+	var pathMapping map[string]int
+	var variantFieldIDs map[int]struct{}
+	if plan != nil {
+		statsCols = plan.statsCols
+		pathMapping = plan.pathMapping
+		variantFieldIDs = plan.variantFieldIDs
+	} else {
+		statsCols = must(computeStatsPlan(currentSchema, props))
+		variantFieldIDs = tblutils.VariantFieldIDsFromSchema(currentSchema)
+	}
+	// A file with embedded field IDs needs its own path mapping. Files without
+	// IDs use the unchanged table schema and can share the precomputed mapping.
+	if pathMapping == nil || pathToIDSchema != currentSchema {
+		pathMapping = must(format.PathToIDMapping(pathToIDSchema))
+	}
 	statistics := format.DataFileStatsFromMeta(
 		rdr.Metadata(),
-		must(computeStatsPlan(currentSchema, props)),
-		must(format.PathToIDMapping(pathToIDSchema)),
-		tblutils.VariantFieldIDsFromSchema(currentSchema),
+		statsCols,
+		pathMapping,
+		variantFieldIDs,
 		arrSchema,
 	)
 
