@@ -211,8 +211,14 @@ func (i InspectTable) manifestEntryReaderFromManifestSource(
 			_ = yield(nil, err)
 		}
 
+		prefetchConcurrency := i.manifestPrefetchConcurrency
+		// Local reads are already cheap; avoid an extra whole-file copy.
+		switch fs.(type) {
+		case iceio.LocalFS, *iceio.LocalFS, *iceio.MemFS:
+			prefetchConcurrency = 1
+		}
 		for prefetched, sourceErr := range inspectManifestPrefetchSource(
-			ctx, fs, source, includeManifest, i.manifestPrefetchConcurrency) {
+			ctx, fs, source, includeManifest, prefetchConcurrency) {
 			if sourceErr != nil {
 				yieldError(sourceErr)
 
