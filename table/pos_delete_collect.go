@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/apache/iceberg-go"
 	iceio "github.com/apache/iceberg-go/io"
 )
@@ -76,23 +78,121 @@ type positionDeleteCandidate struct {
 	seq              int64
 }
 
-func collectPositionDeleteCandidates(ctx context.Context, fs iceio.IO, manifests []iceberg.ManifestFile) (candidates []positionDeleteCandidate, hasPartitionScoped bool, err error) {
-	seen := make(map[string]struct{})
-	for _, m := range manifests {
-		if cerr := ctx.Err(); cerr != nil {
-			return nil, false, cerr
+// deadPositionDeleteManifestConcurrency bounds manifest reads and their
+// per-manifest decoding state, even for snapshots with thousands of manifests.
+const deadPositionDeleteManifestConcurrency = 8
+
+// visitDeadPositionDeleteManifests decodes manifests concurrently, then merges
+// each result in manifest-list order. This preserves first-seen delete-file
+// deduplication and keeps at most one worker batch's decoded entries live.
+func visitDeadPositionDeleteManifests[T any](
+	ctx context.Context,
+	manifests []iceberg.ManifestFile,
+	content iceberg.ManifestContent,
+	read func(context.Context, iceberg.ManifestFile) (T, error),
+	merge func(T) error,
+) error {
+	processBatch := func(batch []iceberg.ManifestFile) error {
+		if len(batch) == 1 {
+			value, err := read(ctx, batch[0])
+			if err != nil {
+				return err
+			}
+
+			return merge(value)
 		}
-		if m.ManifestContent() != iceberg.ManifestContentDeletes {
+
+		results := make([]T, len(batch))
+		group, groupCtx := errgroup.WithContext(ctx)
+		for index, manifest := range batch {
+			group.Go(func() error {
+				value, err := read(groupCtx, manifest)
+				results[index] = value
+
+				return err
+			})
+		}
+		if err := group.Wait(); err != nil {
+			return err
+		}
+
+		for _, result := range results {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := merge(result); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	batch := make([]iceberg.ManifestFile, 0, deadPositionDeleteManifestConcurrency)
+	for _, manifest := range manifests {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if manifest.ManifestContent() != content {
 			continue
 		}
-		for e, err := range m.Entries(fs, true) {
-			if err != nil {
-				return nil, false, err
+
+		batch = append(batch, manifest)
+		if len(batch) == deadPositionDeleteManifestConcurrency {
+			if err := processBatch(batch); err != nil {
+				return err
 			}
-			df := e.DataFile()
+			batch = batch[:0]
+		}
+	}
+
+	if len(batch) > 0 {
+		return processBatch(batch)
+	}
+
+	return nil
+}
+
+type positionDeleteManifestEntry struct {
+	df  iceberg.DataFile
+	seq int64
+}
+
+func collectPositionDeleteCandidates(ctx context.Context, fs iceio.IO, manifests []iceberg.ManifestFile) (candidates []positionDeleteCandidate, hasPartitionScoped bool, err error) {
+	// Read and filter each manifest independently. Resolve partition keys only
+	// after merging in input order so a duplicate file never changes behavior.
+	read := func(ctx context.Context, m iceberg.ManifestFile) ([]positionDeleteManifestEntry, error) {
+		var entries []positionDeleteManifestEntry
+		entryIndex := 0
+		for entry, readErr := range m.Entries(fs, true) {
+			if readErr != nil {
+				return nil, readErr
+			}
+			if entryIndex&1023 == 0 {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+			}
+			entryIndex++
+
+			df := entry.DataFile()
 			if df.ContentType() != iceberg.EntryContentPosDeletes || IsDeletionVector(df) {
 				continue
 			}
+
+			entries = append(entries, positionDeleteManifestEntry{
+				df:  df,
+				seq: entry.SequenceNum(),
+			})
+		}
+
+		return entries, ctx.Err()
+	}
+
+	seen := make(map[string]struct{})
+	merge := func(entries []positionDeleteManifestEntry) error {
+		for _, entry := range entries {
+			df := entry.df
 			path := df.FilePath()
 			if _, ok := seen[path]; ok {
 				continue
@@ -106,38 +206,48 @@ func collectPositionDeleteCandidates(ctx context.Context, fs iceio.IO, manifests
 			}
 
 			// An unset delete sequence cannot be compared safely. Retain it.
-			if seq := e.SequenceNum(); seq >= 0 {
+			if entry.seq >= 0 {
 				partitionKey, err := canonicalPartitionKey(df.SpecID(), dataFilePartition(df))
 				if err != nil {
-					return nil, false, fmt.Errorf("building partition key for position delete %s (spec %d): %w", df.FilePath(), df.SpecID(), err)
+					return fmt.Errorf("building partition key for position delete %s (spec %d): %w", df.FilePath(), df.SpecID(), err)
 				}
 				hasPartitionScoped = true
 				candidates = append(candidates, positionDeleteCandidate{
 					df:           df,
 					partitionKey: partitionKey,
-					seq:          seq,
+					seq:          entry.seq,
 				})
 			}
 		}
+
+		return nil
+	}
+
+	if err := visitDeadPositionDeleteManifests(ctx, manifests, iceberg.ManifestContentDeletes, read, merge); err != nil {
+		return nil, false, err
 	}
 
 	return candidates, hasPartitionScoped, nil
 }
 
 func minSurvivorSeqByPartition(ctx context.Context, fs iceio.IO, manifests []iceberg.ManifestFile, rewrittenPaths map[string]struct{}) (map[string]int64, error) {
-	minSeq := make(map[string]int64)
-	for _, m := range manifests {
-		if cerr := ctx.Err(); cerr != nil {
-			return nil, cerr
-		}
-		if m.ManifestContent() != iceberg.ManifestContentData {
-			continue
-		}
-		for e, err := range m.Entries(fs, true) {
-			if err != nil {
-				return nil, err
+	// Partition minima are associative, so each worker can reduce its entries
+	// before publishing the result to the single ordered merge.
+	read := func(ctx context.Context, m iceberg.ManifestFile) (map[string]int64, error) {
+		minSeq := make(map[string]int64)
+		entryIndex := 0
+		for entry, readErr := range m.Entries(fs, true) {
+			if readErr != nil {
+				return nil, readErr
 			}
-			df := e.DataFile()
+			if entryIndex&1023 == 0 {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+			}
+			entryIndex++
+
+			df := entry.DataFile()
 			if df.ContentType() != iceberg.EntryContentData {
 				continue
 			}
@@ -145,9 +255,8 @@ func minSurvivorSeqByPartition(ctx context.Context, fs iceio.IO, manifests []ice
 				continue
 			}
 
-			// Unknown survivor sequence numbers are treated as old as possible,
-			// retaining every delete whose applicability is uncertain.
-			seq := max(e.SequenceNum(), 0)
+			// An unknown sequence is conservatively treated as zero.
+			seq := max(entry.SequenceNum(), 0)
 			key, err := canonicalPartitionKey(df.SpecID(), dataFilePartition(df))
 			if err != nil {
 				return nil, fmt.Errorf("building partition key for surviving data file %s (spec %d): %w", df.FilePath(), df.SpecID(), err)
@@ -157,9 +266,27 @@ func minSurvivorSeqByPartition(ctx context.Context, fs iceio.IO, manifests []ice
 			}
 			minSeq[key] = seq
 		}
+
+		return minSeq, ctx.Err()
 	}
 
-	return minSeq, nil
+	result := make(map[string]int64)
+	merge := func(partial map[string]int64) error {
+		for key, seq := range partial {
+			if cur, ok := result[key]; ok {
+				seq = min(seq, cur)
+			}
+			result[key] = seq
+		}
+
+		return nil
+	}
+
+	if err := visitDeadPositionDeleteManifests(ctx, manifests, iceberg.ManifestContentData, read, merge); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func decideDeadPositionDeletes(candidates []positionDeleteCandidate, rewrittenPaths map[string]struct{}, minSurvivorSeq map[string]int64) []iceberg.DataFile {
