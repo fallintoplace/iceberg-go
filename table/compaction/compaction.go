@@ -201,30 +201,48 @@ func (cfg Config) PlanCompaction(tasks []table.FileScanTask) (Plan, error) {
 		plan.TotalInputBytes += t.File.FileSizeBytes()
 	}
 
-	// Group tasks by partition key.
+	// Preserve first-seen partition order, including partitions whose first
+	// files are skipped, but avoid building the same key for adjacent files
+	// in a partition. Most manifest and scan task streams are partition-local.
 	type partitionBucket struct {
 		key        string
 		candidates []table.FileScanTask
 	}
-	partitions := make(map[string]partitionBucket)
+	partitions := make(map[string]*partitionBucket)
 	var partitionOrder []string
 
+	var previousPartition map[int]any
+	var previousSpecID int32
+	var previousBucket *partitionBucket
+	var havePrevious bool
+
 	for _, t := range tasks {
-		key := partitionBucketKey(t.File.SpecID(), internal.BorrowedDataFilePartition(t.File))
-		bucket, ok := partitions[key]
-		if !ok {
-			bucket = partitionBucket{key: key}
-			partitionOrder = append(partitionOrder, key)
+		specID := t.File.SpecID()
+		partition := internal.BorrowedDataFilePartition(t.File)
+
+		var bucket *partitionBucket
+		if havePrevious && specID == previousSpecID && sameCompactionPartition(previousPartition, partition) {
+			bucket = previousBucket
+		} else {
+			key := partitionBucketKey(specID, partition)
+			bucket = partitions[key]
+			if bucket == nil {
+				bucket = &partitionBucket{key: key}
+				partitions[key] = bucket
+				partitionOrder = append(partitionOrder, key)
+			}
+
+			previousPartition = partition
+			previousSpecID = specID
+			previousBucket = bucket
+			havePrevious = true
 		}
 
 		if !cfg.isCandidate(t) {
 			plan.SkippedFiles++
-			partitions[key] = bucket
-
 			continue
 		}
 		bucket.candidates = append(bucket.candidates, t)
-		partitions[key] = bucket
 	}
 
 	// Bin-pack candidates per partition.
