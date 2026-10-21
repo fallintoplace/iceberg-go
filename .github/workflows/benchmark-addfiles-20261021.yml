@@ -1,0 +1,21 @@
+name: Temporary AddFiles benchmark
+on:
+  pull_request:
+    branches:
+      - base/upstream-9dd8d3-20261021
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: AddFiles parity and race tests
+        run: go test ./table -run '^TestAddFilesConversionPlan' -count=1 -race -timeout=10m
+      - name: AddFiles conversion benchmark
+        run: go test ./table -run '^$' -bench '^BenchmarkAddFilesConversionPlans$' -benchmem -benchtime=3x -count=2 -timeout=10m
