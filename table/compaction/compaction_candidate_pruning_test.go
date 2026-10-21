@@ -54,11 +54,11 @@ func TestPlanCompactionSkipsIneligiblePartitionMetadata(t *testing.T) {
 func TestPlanCompactionGroupsOnlyCandidates(t *testing.T) {
 	cfg := compaction.Config{
 		TargetFileSizeBytes: 100 * 1024 * 1024,
-		MinFileSizeBytes: 75 * 1024 * 1024,
-		MaxFileSizeBytes: 180 * 1024 * 1024,
-		MinInputFiles: 2,
+		MinFileSizeBytes:    75 * 1024 * 1024,
+		MaxFileSizeBytes:    180 * 1024 * 1024,
+		MinInputFiles:       2,
 		DeleteFileThreshold: 5,
-		PackingLookback: compaction.DefaultPackingLookback,
+		PackingLookback:     compaction.DefaultPackingLookback,
 	}
 
 	a := map[int]any{1000: "alpha"}
@@ -85,6 +85,6 @@ func TestPlanCompactionGroupsOnlyCandidates(t *testing.T) {
 	}
 	require.Equal(t, map[string]int{
 		"0:1000=alpha;": 3,
-		"0:1000=beta;": 2,
+		"0:1000=beta;":  2,
 	}, got)
 }
