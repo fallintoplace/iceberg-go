@@ -19,7 +19,6 @@ package table
 import (
 	"context"
 	"fmt"
-	"iter"
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -39,13 +38,7 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 	}
 
 	snapshots := i.tbl.Metadata().Snapshots()
-	var readSnapshotManifests func(Snapshot) (iter.Seq[iceberg.ManifestFile], error)
-	if len(snapshots) > 0 {
-		provider := i.tbl.ManifestProvider()
-		readSnapshotManifests = func(snapshot Snapshot) (iter.Seq[iceberg.ManifestFile], error) {
-			return provider.Manifests(ctx, snapshot)
-		}
-	}
+	provider := i.tbl.ManifestProvider()
 
 	return array.ReaderFromIter(arrowSchema, func(yield func(arrow.RecordBatch, error) bool) {
 		bldr := array.NewRecordBuilder(i.alloc, arrowSchema)
@@ -54,6 +47,7 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 		rows := 0
 		emitted := false
 		chunk := make([]iceberg.ManifestFile, 0, inspectRecordBatchSize)
+		var referenceSnapshotID int64
 		emit := func() bool {
 			if rows == 0 {
 				return true
@@ -73,50 +67,57 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 		yieldError := func(err error) {
 			_ = yield(nil, err)
 		}
-
-		for _, snapshot := range snapshots {
-			if err := ctx.Err(); err != nil {
-				yieldError(err)
-
-				return
+		appendChunk := func() bool {
+			if len(chunk) == 0 {
+				return true
 			}
+			if err := i.appendManifestRows(ctx, bldr, slices.Values(chunk), &referenceSnapshotID); err != nil {
+				yieldError(fmt.Errorf("inspect all manifests: snapshot %d: %w", referenceSnapshotID, err))
 
-			manifests, err := readSnapshotManifests(snapshot)
-			if err != nil {
-				yieldError(fmt.Errorf("inspect all manifests: read snapshot %d manifests: %w",
-					snapshot.SnapshotID, err))
-
-				return
+				return false
 			}
+			rows += len(chunk)
+			chunk = chunk[:0]
 
-			// Gather manifests into a reused chunk so each record batch is
-			// filled to inspectRecordBatchSize across snapshot boundaries.
-			referenceSnapshotID := snapshot.SnapshotID
-			appendChunk := func() bool {
-				if err := i.appendManifestRows(ctx, bldr, slices.Values(chunk), &referenceSnapshotID); err != nil {
-					yieldError(fmt.Errorf("inspect all manifests: snapshot %d: %w", snapshot.SnapshotID, err))
+			return true
+		}
+
+		completed := true
+		// Unlike all_files, all_manifests must include one row for every
+		// snapshot reference, including references to the same manifest path.
+		streamSnapshotManifestLists(ctx, snapshots, provider.cachedSet, provider.set, false,
+			func(snapshot Snapshot, manifest iceberg.ManifestFile, sourceErr error) bool {
+				if sourceErr != nil {
+					completed = false
+					yieldError(fmt.Errorf("inspect all manifests: %w", sourceErr))
 
 					return false
 				}
-				rows += len(chunk)
-				chunk = chunk[:0]
+				// Flush at snapshot boundaries so every row uses its own
+				// reference_snapshot_id, even across prefetched lists.
+				if len(chunk) > 0 && referenceSnapshotID != snapshot.SnapshotID {
+					if !appendChunk() {
+						completed = false
 
-				return true
-			}
-			for manifest := range manifests {
+						return false
+					}
+				}
+				referenceSnapshotID = snapshot.SnapshotID
 				chunk = append(chunk, manifest)
 				if rows+len(chunk) < inspectRecordBatchSize {
-					continue
+					return true
 				}
 				if !appendChunk() || !emit() {
-					return
-				}
-			}
-			if len(chunk) > 0 && !appendChunk() {
-				return
-			}
-		}
+					completed = false
 
+					return false
+				}
+
+				return true
+			})
+		if !completed || !appendChunk() {
+			return
+		}
 		if rows > 0 {
 			_ = emit()
 		} else if !emitted {
