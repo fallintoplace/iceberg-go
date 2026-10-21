@@ -65,6 +65,8 @@ type equalityDeleteSet struct {
 	singleInt64     *singleInt64EqualityDeleteSet
 	singleBytesOnce sync.Once
 	singleBytes     *singleBytesEqualityDeleteSet
+	pairInt64Once   sync.Once
+	pairInt64       *pairInt64EqualityDeleteSet
 }
 
 type arrowFieldRef struct {
@@ -1382,6 +1384,76 @@ func (e *equalityDeleteSet) singleInt64Set(fileSchema *iceberg.Schema) *singleIn
 	return e.singleInt64
 }
 
+// pairInt64EqualityDeleteKey represents two Int64 equality fields without
+// serializing a key for each data row. Nulls are distinct from numeric zero.
+type pairInt64EqualityDeleteKey struct {
+	first, second uint64
+	nullMask      uint8
+}
+
+type pairInt64EqualityDeleteSet struct {
+	keys set[pairInt64EqualityDeleteKey]
+}
+
+// pairInt64Set decodes the immutable encoded delete keys once. Unexpected
+// encodings fall back to the generic per-row encoder.
+func (e *equalityDeleteSet) pairInt64Set(fileSchema *iceberg.Schema) *pairInt64EqualityDeleteSet {
+	if fileSchema == nil || len(e.fieldIDs) != 2 {
+		return nil
+	}
+
+	for _, fieldID := range e.fieldIDs {
+		field, ok := fileSchema.FindFieldByID(fieldID)
+		if !ok {
+			return nil
+		}
+		if _, ok := field.Type.(iceberg.Int64Type); !ok {
+			return nil
+		}
+	}
+
+	e.pairInt64Once.Do(func() {
+		result := &pairInt64EqualityDeleteSet{
+			keys: make(set[pairInt64EqualityDeleteKey], len(e.keys)),
+		}
+		for encoded := range e.keys {
+			var key pairInt64EqualityDeleteKey
+			offset := 0
+			for field := range 2 {
+				if offset >= len(encoded) {
+					return
+				}
+
+				switch encoded[offset] {
+				case 0:
+					key.nullMask |= 1 << uint(field)
+					offset++
+				case 1:
+					if len(encoded)-offset < 9 {
+						return
+					}
+					value := binary.BigEndian.Uint64([]byte(encoded[offset+1 : offset+9]))
+					if field == 0 {
+						key.first = value
+					} else {
+						key.second = value
+					}
+					offset += 9
+				default:
+					return
+				}
+			}
+			if offset != len(encoded) {
+				return
+			}
+			result.keys[key] = struct{}{}
+		}
+		e.pairInt64 = result
+	})
+
+	return e.pairInt64
+}
+
 type singleBytesEqualityDeleteSet struct {
 	keys    set[string]
 	hasNull bool
@@ -1565,6 +1637,67 @@ func (m *equalityDeleteMask) applySingleBytes(
 	return true
 }
 
+// applyPairInt64 uses the typed composite-key index for flat Int64 columns.
+// Unexpected physical Arrow types retain the generic encoded-key path.
+func (m *equalityDeleteMask) applyPairInt64(
+	firstColumn, secondColumn arrow.Array,
+	deleteSet *pairInt64EqualityDeleteSet,
+	mem memory.Allocator,
+) bool {
+	first, ok := firstColumn.(*array.Int64)
+	if !ok {
+		return false
+	}
+	second, ok := secondColumn.(*array.Int64)
+	if !ok {
+		return false
+	}
+
+	firstValues, secondValues := first.Int64Values(), second.Int64Values()
+	numRows := first.Len()
+	if first.NullN() == 0 && second.NullN() == 0 {
+		for row := range numRows {
+			if m.bits != nil && !bitutil.BitIsSet(m.bits, row) {
+				continue
+			}
+
+			key := pairInt64EqualityDeleteKey{
+				first: uint64(firstValues[row]), second: uint64(secondValues[row]),
+			}
+			if _, deleted := deleteSet.keys[key]; deleted {
+				m.ensure(mem, numRows)
+				bitutil.ClearBit(m.bits, row)
+			}
+		}
+		return true
+	}
+
+	for row := range numRows {
+		if m.bits != nil && !bitutil.BitIsSet(m.bits, row) {
+			continue
+		}
+
+		var key pairInt64EqualityDeleteKey
+		if first.IsNull(row) {
+			key.nullMask = 1
+		} else {
+			key.first = uint64(firstValues[row])
+		}
+		if second.IsNull(row) {
+			key.nullMask |= 2
+		} else {
+			key.second = uint64(secondValues[row])
+		}
+
+		if _, deleted := deleteSet.keys[key]; deleted {
+			m.ensure(mem, numRows)
+			bitutil.ClearBit(m.bits, row)
+		}
+	}
+
+	return true
+}
+
 // processEqualityDeletesColumnarForFile resolves field paths once per file and
 // typed column encoders once per batch, then iterates rows without per-row type
 // switches. Each delete set is applied independently because sets may have
@@ -1602,12 +1735,16 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 
 	singleInt64Sets := make([]*singleInt64EqualityDeleteSet, len(eqDeleteSets))
 	singleBytesSets := make([]*singleBytesEqualityDeleteSet, len(eqDeleteSets))
+	pairInt64Sets := make([]*pairInt64EqualityDeleteSet, len(eqDeleteSets))
 	for i, eqDel := range eqDeleteSets {
 		// Nested fields need parent validity checks and use the generic path.
 		// Do not duplicate their encoded keys in an index that cannot be used.
 		if len(fieldRefs[i]) == 1 && len(fieldRefs[i][0].path) == 1 {
 			singleInt64Sets[i] = eqDel.singleInt64Set(fileSchema)
 			singleBytesSets[i] = eqDel.singleBytesSet(fileSchema)
+		}
+		if len(fieldRefs[i]) == 2 && len(fieldRefs[i][0].path) == 1 && len(fieldRefs[i][1].path) == 1 {
+			pairInt64Sets[i] = eqDel.pairInt64Set(fileSchema)
 		}
 	}
 
@@ -1623,6 +1760,22 @@ func processEqualityDeletesColumnarForFile(ctx context.Context, eqDeleteSets []*
 		var keyBuf bytes.Buffer
 
 		for setIdx, eqDel := range eqDeleteSets {
+			if pairSet := pairInt64Sets[setIdx]; pairSet != nil {
+				first, _, err := arrowArraysAtField(
+					r, fieldRefs[setIdx][0], eqDel.fieldIDs[0], eqDel.colNames[0], dataFilePath)
+				if err != nil {
+					return nil, err
+				}
+				second, _, err := arrowArraysAtField(
+					r, fieldRefs[setIdx][1], eqDel.fieldIDs[1], eqDel.colNames[1], dataFilePath)
+				if err != nil {
+					return nil, err
+				}
+				if mask.applyPairInt64(first, second, pairSet, mem) {
+					continue
+				}
+			}
+
 			if int64Set, bytesSet := singleInt64Sets[setIdx], singleBytesSets[setIdx]; int64Set != nil || bytesSet != nil {
 				column, _, err := arrowArraysAtField(
 					r, fieldRefs[setIdx][0], eqDel.fieldIDs[0], eqDel.colNames[0], dataFilePath)
