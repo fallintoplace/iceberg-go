@@ -35,7 +35,7 @@ import (
 
 func TestProcessEqualityDeletesPairInt64MatchesGeneric(t *testing.T) {
 	type values struct {
-		first, second int64
+		first, second         int64
 		nullFirst, nullSecond bool
 	}
 	rows := []values{
@@ -49,7 +49,7 @@ func TestProcessEqualityDeletesPairInt64MatchesGeneric(t *testing.T) {
 		{first: math.MinInt64, second: -5},
 	}
 	cases := []struct {
-		name string
+		name       string
 		deleteRows []int
 	}{
 		{name: "no_match"},
