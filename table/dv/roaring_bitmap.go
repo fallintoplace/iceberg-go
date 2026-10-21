@@ -373,13 +373,27 @@ func (b *RoaringPositionBitmap) KeepMaskForRange(start, end uint64) []byte {
 			}
 		}
 		hi := min(end-base, uint64(1)<<32)
-		if lo >= hi || bm.CardinalityInRange(lo, hi) == 0 {
+		if lo >= hi {
+			continue
+		}
+		deletions := bm.CardinalityInRange(lo, hi)
+		if deletions == 0 {
 			continue
 		}
 
 		if out == nil {
 			out = make([]byte, bitutil.BytesForBits(int64(end-start)))
 			memory.Set(out, 0xFF)
+		}
+
+		// For dense ranges near the beginning of a bucket, write keep bits
+		// a word at a time. Cap the conversion size so a later batch does
+		// not materialize a large prefix just to process a small range.
+		denseWords := bm.DenseSize()
+		rangeWords := (hi - lo + 63) / 64
+		if denseWords <= rangeWords*2 && deletions >= denseWords*4 {
+			writeDenseKeepMaskRange(out, bm.ToDense(), base+lo-start, lo, hi-lo)
+			continue
 		}
 
 		it := bm.Iterator()
@@ -401,4 +415,41 @@ func (b *RoaringPositionBitmap) KeepMaskForRange(start, end uint64) []byte {
 	}
 
 	return out
+}
+
+
+// denseDeleteWord returns 64 deletion bits at an arbitrary position in the
+// bucket's dense representation. Bits beyond its last position are clear.
+func denseDeleteWord(dense []uint64, start uint64) uint64 {
+	index := start >> 6
+	if index >= uint64(len(dense)) {
+		return 0
+	}
+
+	shift := uint(start & 63)
+	word := dense[index] >> shift
+	if shift != 0 && index+1 < uint64(len(dense)) {
+		word |= dense[index+1] << (64 - shift)
+	}
+	return word
+}
+
+// writeDenseKeepMaskRange writes complemented dense bits into a batch-relative
+// keep mask. Both offsets may be unaligned, even across roaring buckets.
+func writeDenseKeepMaskRange(out []byte, dense []uint64, outOffset, start, length uint64) {
+	writer := bitutil.NewBitmapWordWriter(out, int(outOffset), int(length))
+	fullBits := length &^ uint64(63)
+	for offset := uint64(0); offset < fullBits; offset += 64 {
+		writer.PutNextWord(^denseDeleteWord(dense, start+offset))
+	}
+
+	if remaining := length - fullBits; remaining > 0 {
+		word := ^denseDeleteWord(dense, start+fullBits)
+		for remaining > 0 {
+			valid := min(remaining, uint64(8))
+			writer.PutNextTrailingByte(byte(word), int(valid))
+			word >>= 8
+			remaining -= valid
+		}
+	}
 }
