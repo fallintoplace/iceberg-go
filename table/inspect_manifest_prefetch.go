@@ -99,6 +99,11 @@ func inspectManifestPrefetchSource(
 		if !ok {
 			return
 		}
+		if firstErr != nil {
+			yield(inspectManifestReadSource{}, firstErr)
+
+			return
+		}
 		second, secondErr, ok := pull()
 		if !ok {
 			// Preserve the existing zero-copy streaming behavior for a single
@@ -249,6 +254,9 @@ func readInspectManifestBytes(fileIO iceio.IO, manifest iceberg.ManifestFile) (i
 	}
 
 	return inspectManifestBufferedIO{
-		IO: fileIO, path: path, data: data, info: info,
+		IO:   fileIO,
+		path: path,
+		data: data,
+		info: info,
 	}, nil
 }
