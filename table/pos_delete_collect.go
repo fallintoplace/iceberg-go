@@ -21,10 +21,9 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/apache/iceberg-go"
 	iceio "github.com/apache/iceberg-go/io"
+	"golang.org/x/sync/errgroup"
 )
 
 // CollectDeadPositionDeletes walks the given snapshot's manifests and returns
