@@ -417,7 +417,6 @@ func (b *RoaringPositionBitmap) KeepMaskForRange(start, end uint64) []byte {
 	return out
 }
 
-
 // denseDeleteWord returns 64 deletion bits at an arbitrary position in the
 // bucket's dense representation. Bits beyond its last position are clear.
 func denseDeleteWord(dense []uint64, start uint64) uint64 {
