@@ -526,7 +526,6 @@ func sameAdjacentPartitionSource(column arrow.Array, row int) bool {
 	}
 }
 
-
 // partitionTransformValueCache avoids rehashing repeated, non-adjacent string
 // and binary values for bucket and truncate transforms. A cache belongs to
 // exactly one field in one record batch: Arrow value buffers are only borrowed
@@ -569,9 +568,17 @@ func (c *partitionTransformValueCache) valueAt(
 	case *array.LargeString:
 		key = values.Value(row)
 	case *array.Binary:
-		key = string(values.Value(row))
+		binaryValue := values.Value(row)
+		if len(binaryValue) > maxPartitionTransformCacheKeySize {
+			return convert(column, row)
+		}
+		key = string(binaryValue)
 	case *array.LargeBinary:
-		key = string(values.Value(row))
+		binaryValue := values.Value(row)
+		if len(binaryValue) > maxPartitionTransformCacheKeySize {
+			return convert(column, row)
+		}
+		key = string(binaryValue)
 	default:
 		return convert(column, row)
 	}
