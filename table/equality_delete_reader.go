@@ -1434,9 +1434,7 @@ func (e *equalityDeleteSet) pairInt64Set(fileSchema *iceberg.Schema) *pairInt64E
 	}
 
 	e.pairInt64Once.Do(func() {
-		result := &pairInt64EqualityDeleteSet{
-			keys: make(set[[2]uint64], len(e.keys)),
-		}
+		result := &pairInt64EqualityDeleteSet{}
 		for encoded := range e.keys {
 			values, nullMask, ok := decodePairInt64Key(encoded)
 			if !ok {
@@ -1445,6 +1443,9 @@ func (e *equalityDeleteSet) pairInt64Set(fileSchema *iceberg.Schema) *pairInt64E
 			}
 			switch nullMask {
 			case 0:
+				if result.keys == nil {
+					result.keys = make(set[[2]uint64], len(e.keys))
+				}
 				result.keys[values] = struct{}{}
 			case 1:
 				if result.firstNull == nil {
@@ -1665,7 +1666,17 @@ func (m *equalityDeleteMask) applyPairInt64(
 
 	firstValues, secondValues := first.Int64Values(), second.Int64Values()
 	numRows := first.Len()
-	if first.NullN() == 0 && second.NullN() == 0 {
+	if len(deleteSet.keys) == 0 && len(deleteSet.firstNull) == 0 &&
+		len(deleteSet.secondNull) == 0 && !deleteSet.bothNull {
+		return true
+	}
+
+	firstHasNulls, secondHasNulls := first.NullN() != 0, second.NullN() != 0
+	if !firstHasNulls && !secondHasNulls {
+		// Null-only delete sets cannot match a fully non-null Arrow batch.
+		if len(deleteSet.keys) == 0 {
+			return true
+		}
 		for row := range numRows {
 			if m.bits != nil && !bitutil.BitIsSet(m.bits, row) {
 				continue
@@ -1684,7 +1695,8 @@ func (m *equalityDeleteMask) applyPairInt64(
 		if m.bits != nil && !bitutil.BitIsSet(m.bits, row) {
 			continue
 		}
-		firstNull, secondNull := first.IsNull(row), second.IsNull(row)
+		firstNull := firstHasNulls && first.IsNull(row)
+		secondNull := secondHasNulls && second.IsNull(row)
 		var deleted bool
 		switch {
 		case firstNull && secondNull:
