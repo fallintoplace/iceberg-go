@@ -102,6 +102,12 @@ func TestAddFilesConversionPlanParity(t *testing.T) {
 
 			baseline := fileToDataFile(ctx, fixture.fs, fixture.path, fixture.schema, fixture.spec, 0, fixture.props)
 			reused := fileToDataFileWithPlan(ctx, fixture.fs, fixture.path, fixture.schema, fixture.spec, 0, fixture.props, plan)
+			if withIDs {
+				// Do not build the fallback map when Parquet provides its own IDs.
+				require.Nil(t, plan.pathMapping)
+			} else {
+				require.NotNil(t, plan.pathMapping)
+			}
 			require.Equal(t, baseline.FilePath(), reused.FilePath())
 			require.Equal(t, baseline.Count(), reused.Count())
 			require.Equal(t, baseline.FileSizeBytes(), reused.FileSizeBytes())
