@@ -39,15 +39,19 @@ import (
 // Obtain one via Table.Inspect. Each method returns an array.RecordReader that
 // the caller is responsible for releasing.
 type InspectTable struct {
-	tbl   Table
-	alloc memory.Allocator
+	tbl                         Table
+	alloc                       memory.Allocator
+	manifestPrefetchConcurrency int
 }
 
 // Inspect returns an InspectTable for reading this table's metadata tables,
 // allocating Arrow buffers from opts, if provided, otherwise the default
 // allocator.
 func (t Table) Inspect(opts ...InspectOption) InspectTable {
-	i := InspectTable{tbl: t, alloc: memory.DefaultAllocator}
+	i := InspectTable{
+		tbl: t, alloc: memory.DefaultAllocator,
+		manifestPrefetchConcurrency: inspectManifestPrefetchConcurrency,
+	}
 	for _, opt := range opts {
 		opt(&i)
 	}
