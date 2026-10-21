@@ -373,13 +373,41 @@ func (b *RoaringPositionBitmap) KeepMaskForRange(start, end uint64) []byte {
 			}
 		}
 		hi := min(end-base, uint64(1)<<32)
-		if lo >= hi || bm.CardinalityInRange(lo, hi) == 0 {
+		if lo >= hi {
+			continue
+		}
+		deleted := bm.CardinalityInRange(lo, hi)
+		if deleted == 0 {
 			continue
 		}
 
 		if out == nil {
 			out = make([]byte, bitutil.BytesForBits(int64(end-start)))
 			memory.Set(out, 0xFF)
+		}
+
+		// A fully deleted interval can be cleared in one bitmap operation.
+		// This also avoids expanding a run container into every deleted row.
+		if deleted == hi-lo {
+			bitutil.SetBitsTo(out, int64(base+lo-start), int64(hi-lo), false)
+
+			continue
+		}
+
+		// For nearly full intervals, clearing the entire range and
+		// restoring the few surviving positions visits fewer bitmap entries
+		// than enumerating every deleted row. Leave sparse ranges on their
+		// existing per-position iterator path.
+		if hi-lo >= 1024 && deleted*8 >= (hi-lo)*7 {
+			bitutil.SetBitsTo(out, int64(base+lo-start), int64(hi-lo), false)
+			it := bm.UnsetIterator(lo, hi)
+			for it.HasNext() {
+				pos := uint64(it.Next())
+				offset := base + pos - start
+				out[offset>>3] |= byte(1 << (offset & 7))
+			}
+
+			continue
 		}
 
 		it := bm.Iterator()
