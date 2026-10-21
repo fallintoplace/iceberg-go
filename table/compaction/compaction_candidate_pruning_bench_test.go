@@ -33,17 +33,17 @@ func BenchmarkPlanCompactionCandidatePruning(b *testing.B) {
 	const filesPerOp = 20_000
 	cfg := compaction.Config{
 		TargetFileSizeBytes: 100 * 1024 * 1024,
-		MinFileSizeBytes: 75 * 1024 * 1024,
-		MaxFileSizeBytes: 180 * 1024 * 1024,
-		MinInputFiles: 2,
+		MinFileSizeBytes:    75 * 1024 * 1024,
+		MaxFileSizeBytes:    180 * 1024 * 1024,
+		MinInputFiles:       2,
 		DeleteFileThreshold: 5,
-		PackingLookback: compaction.DefaultPackingLookback,
+		PackingLookback:     compaction.DefaultPackingLookback,
 	}
 
 	for _, tt := range []struct {
-		name string
+		name             string
 		candidatePercent int
-		partitionCount int
+		partitionCount   int
 	}{
 		{name: "healthy", candidatePercent: 0, partitionCount: 128},
 		{name: "sparse_5pct", candidatePercent: 5, partitionCount: 128},
@@ -57,10 +57,10 @@ func BenchmarkPlanCompactionCandidatePruning(b *testing.B) {
 				1000: int32(i),
 				1001: fmt.Sprintf("region-%d", i%17),
 				1002: int64(i * 7),
-				1003: int32(i%11),
+				1003: int32(i % 11),
 				1004: "category",
 				1005: int64(i * 13),
-				1006: int32(i%5),
+				1006: int32(i % 5),
 				1007: "country",
 			}
 		}
