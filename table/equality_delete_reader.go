@@ -1384,7 +1384,6 @@ func (e *equalityDeleteSet) singleInt64Set(fileSchema *iceberg.Schema) *singleIn
 	return e.singleInt64
 }
 
-
 type pairInt64EqualityDeleteSet struct {
 	keys       set[[2]uint64]
 	firstNull  set[uint64]
@@ -1649,7 +1648,6 @@ func (m *equalityDeleteMask) applySingleBytes(
 
 	return true
 }
-
 
 func (m *equalityDeleteMask) applyPairInt64(
 	left, right arrow.Array,
