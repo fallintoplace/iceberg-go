@@ -43,7 +43,7 @@ func TestProcessEqualityDeletesPairInt64MatchesGeneric(t *testing.T) {
 		{Name: "tenant", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 	}, nil)
 	rows := []struct {
-		id, tenant int64
+		id, tenant           int64
 		idValid, tenantValid bool
 	}{
 		{math.MinInt64, math.MaxInt64, true, true},
@@ -58,11 +58,11 @@ func TestProcessEqualityDeletesPairInt64MatchesGeneric(t *testing.T) {
 
 	for _, offset := range []int{0, 3, 9} {
 		for _, tc := range []struct {
-			name string
-			deleteRows []int
-			addMissing bool
+			name         string
+			deleteRows   []int
+			addMissing   bool
 			addMalformed bool
-			wantRows int64
+			wantRows     int64
 		}{
 			{name: "all null shapes and duplicates", deleteRows: []int{0, 2, 3, 4, 7}, wantRows: 2},
 			{name: "only non-null keys", deleteRows: []int{0, 7}, wantRows: 5},
