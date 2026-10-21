@@ -83,10 +83,10 @@ func makeAddFilesConversionFixture(tb testing.TB, width int, withIDs bool) addFi
 
 	return addFilesConversionFixture{
 		schema: schema,
-		spec: *iceberg.UnpartitionedSpec,
-		path: path,
-		fs: fs,
-		props: iceberg.Properties{
+		spec:   *iceberg.UnpartitionedSpec,
+		path:   path,
+		fs:     fs,
+		props:  iceberg.Properties{
 			MetricsModeColumnConfPrefix + ".column_000": "counts",
 		},
 	}
