@@ -29,6 +29,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -1936,8 +1937,13 @@ func FileToDataFile(ctx context.Context, fileIO iceio.IO, filePath string, curre
 // these maps; each file still builds its own column statistics and aggregators.
 type addFilesConversionPlan struct {
 	statsCols       map[int]tblutils.StatisticsCollector
-	pathMapping     map[string]int
 	variantFieldIDs map[int]struct{}
+
+	// Only files without embedded field IDs use the table-schema path mapping.
+	// Build it lazily so all-field-ID imports skip that work entirely.
+	pathMappingOnce sync.Once
+	pathMapping     map[string]int
+	pathMappingErr  error
 }
 
 func newAddFilesConversionPlan(schema *iceberg.Schema, props iceberg.Properties) (*addFilesConversionPlan, error) {
@@ -1945,14 +1951,8 @@ func newAddFilesConversionPlan(schema *iceberg.Schema, props iceberg.Properties)
 	if err != nil {
 		return nil, err
 	}
-	pathMapping, err := tblutils.GetFileFormat(iceberg.ParquetFile).PathToIDMapping(schema)
-	if err != nil {
-		return nil, err
-	}
-
 	return &addFilesConversionPlan{
 		statsCols:       statsCols,
-		pathMapping:     pathMapping,
 		variantFieldIDs: tblutils.VariantFieldIDsFromSchema(schema),
 	}, nil
 }
@@ -1979,20 +1979,30 @@ func fileToDataFileWithPlan(ctx context.Context, fileIO iceio.IO, filePath strin
 		}))
 	}
 	var statsCols map[int]tblutils.StatisticsCollector
-	var pathMapping map[string]int
 	var variantFieldIDs map[int]struct{}
 	if plan != nil {
 		statsCols = plan.statsCols
-		pathMapping = plan.pathMapping
 		variantFieldIDs = plan.variantFieldIDs
 	} else {
 		statsCols = must(computeStatsPlan(currentSchema, props))
 		variantFieldIDs = tblutils.VariantFieldIDsFromSchema(currentSchema)
 	}
-	// A file with embedded field IDs needs its own path mapping. Files without
-	// IDs use the unchanged table schema and can share the precomputed mapping.
-	if pathMapping == nil || pathToIDSchema != currentSchema {
+
+	var pathMapping map[string]int
+	switch {
+	case pathToIDSchema != currentSchema:
+		// Embedded field IDs can produce a different mapping for each file.
 		pathMapping = must(format.PathToIDMapping(pathToIDSchema))
+	case plan != nil:
+		plan.pathMappingOnce.Do(func() {
+			plan.pathMapping, plan.pathMappingErr = format.PathToIDMapping(currentSchema)
+		})
+		if plan.pathMappingErr != nil {
+			panic(plan.pathMappingErr)
+		}
+		pathMapping = plan.pathMapping
+	default:
+		pathMapping = must(format.PathToIDMapping(currentSchema))
 	}
 	statistics := format.DataFileStatsFromMeta(
 		rdr.Metadata(),
