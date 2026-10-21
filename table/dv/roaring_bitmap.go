@@ -391,7 +391,7 @@ func (b *RoaringPositionBitmap) KeepMaskForRange(start, end uint64) []byte {
 		// not materialize a large prefix just to process a small range.
 		denseWords := bm.DenseSize()
 		rangeWords := (hi - lo + 63) / 64
-		if denseWords <= rangeWords*2 && deletions >= denseWords*4 {
+		if denseWords <= rangeWords*2 && deletions >= denseWords*16 {
 			writeDenseKeepMaskRange(out, bm.ToDense(), base+lo-start, lo, hi-lo)
 			continue
 		}
