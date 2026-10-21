@@ -36,10 +36,10 @@ import (
 
 type addFilesConversionFixture struct {
 	schema *iceberg.Schema
-	spec iceberg.PartitionSpec
-	path string
-	fs iceio.LocalFS
-	props iceberg.Properties
+	spec   iceberg.PartitionSpec
+	path   string
+	fs     iceio.LocalFS
+	props  iceberg.Properties
 }
 
 func makeAddFilesConversionFixture(tb testing.TB, width int, withIDs bool) addFilesConversionFixture {
