@@ -30,6 +30,7 @@ import (
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 	"github.com/apache/iceberg-go"
 	iceio "github.com/apache/iceberg-go/io"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -138,8 +139,8 @@ func TestAddFilesConversionPlanConcurrentReads(t *testing.T) {
 		wg.Go(func() {
 			for range 4 {
 				actual := fileToDataFileWithPlan(ctx, fixture.fs, fixture.path, fixture.schema, fixture.spec, 0, fixture.props, plan)
-				require.Equal(t, baseline.ColumnSizes(), actual.ColumnSizes())
-				require.Equal(t, baseline.ValueCounts(), actual.ValueCounts())
+				assert.Equal(t, baseline.ColumnSizes(), actual.ColumnSizes())
+				assert.Equal(t, baseline.ValueCounts(), actual.ValueCounts())
 			}
 		})
 	}
