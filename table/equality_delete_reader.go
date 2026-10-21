@@ -1669,6 +1669,7 @@ func (m *equalityDeleteMask) applyPairInt64(
 				bitutil.ClearBit(m.bits, row)
 			}
 		}
+
 		return true
 	}
 
