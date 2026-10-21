@@ -87,56 +87,94 @@ func collectDeadEqualityDeletes(
 		return nil, err
 	}
 
-	// First pass: delete manifests only, collecting eq-delete candidates.
-	var candidates []iceberg.ManifestEntry
+	// Split by content once and keep snapshot order within each kind.
+	var deleteManifests, dataManifests []iceberg.ManifestFile
 	for _, m := range manifests {
-		if cerr := ctx.Err(); cerr != nil {
-			return nil, cerr
+		switch m.ManifestContent() {
+		case iceberg.ManifestContentDeletes:
+			deleteManifests = append(deleteManifests, m)
+		case iceberg.ManifestContentData:
+			dataManifests = append(dataManifests, m)
 		}
-		if m.ManifestContent() != iceberg.ManifestContentDeletes {
-			continue
-		}
-		for e, err := range m.Entries(fs, true) {
-			if err != nil {
-				return nil, err
-			}
-			if e.DataFile().ContentType() != iceberg.EntryContentEqDeletes {
-				continue
-			}
-			candidates = append(candidates, e)
-		}
-	}
-	if len(candidates) == 0 {
-		return nil, nil
 	}
 
-	// Second pass: data manifests, building the survivor survey.
+	// Phase 1: read only delete manifests. Workers own separate slices, and
+	// merging by manifest index preserves the original candidate order.
+	candidateGroups := make([][]iceberg.ManifestEntry, len(deleteManifests))
+	err = walkCompactionManifests(ctx, deleteManifests,
+		func(readCtx context.Context, _ int, index int, m iceberg.ManifestFile) error {
+			var candidates []iceberg.ManifestEntry
+			for entry, readErr := range m.Entries(fs, true) {
+				if readErr != nil {
+					return readErr
+				}
+				if err := readCtx.Err(); err != nil {
+					return err
+				}
+				if entry.DataFile().ContentType() == iceberg.EntryContentEqDeletes {
+					candidates = append(candidates, entry)
+				}
+			}
+			candidateGroups[index] = candidates
+
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	candidateCount := 0
+	for _, group := range candidateGroups {
+		candidateCount += len(group)
+	}
+	if candidateCount == 0 {
+		return nil, nil
+	}
+	candidates := make([]iceberg.ManifestEntry, 0, candidateCount)
+	for _, group := range candidateGroups {
+		candidates = append(candidates, group...)
+	}
+
+	// Phase 2: each worker maintains its own survivor minima. Merging them
+	// once after all readers finish avoids locking the per-entry hot path.
+	workerSurveys := make([]*SurvivorSurvey, compactionManifestWorkerCount(len(dataManifests)))
+	for i := range workerSurveys {
+		workerSurveys[i] = NewSurvivorSurvey()
+	}
+	err = walkCompactionManifests(ctx, dataManifests,
+		func(readCtx context.Context, worker, _ int, m iceberg.ManifestFile) error {
+			survey := workerSurveys[worker]
+			for entry, readErr := range m.Entries(fs, true) {
+				if readErr != nil {
+					return readErr
+				}
+				if err := readCtx.Err(); err != nil {
+					return err
+				}
+				df := entry.DataFile()
+				if df.ContentType() != iceberg.EntryContentData {
+					continue
+				}
+				if _, beingRewritten := rewrittenPaths[df.FilePath()]; beingRewritten {
+					continue
+				}
+				partition := internal.BorrowedDataFilePartition(df)
+				if specs == nil {
+					survey.AddSurvivor(partition, entry.SequenceNum())
+				} else {
+					survey.AddSurvivorWithSpec(df.SpecID(), partition, entry.SequenceNum())
+				}
+			}
+
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
 	survey := NewSurvivorSurvey()
-	for _, m := range manifests {
-		if cerr := ctx.Err(); cerr != nil {
-			return nil, cerr
-		}
-		if m.ManifestContent() != iceberg.ManifestContentData {
-			continue
-		}
-		for e, err := range m.Entries(fs, true) {
-			if err != nil {
-				return nil, err
-			}
-			df := e.DataFile()
-			if df.ContentType() != iceberg.EntryContentData {
-				continue
-			}
-			if _, beingRewritten := rewrittenPaths[df.FilePath()]; beingRewritten {
-				continue
-			}
-			partition := internal.BorrowedDataFilePartition(df)
-			if specs == nil {
-				survey.AddSurvivor(partition, e.SequenceNum())
-			} else {
-				survey.AddSurvivorWithSpec(df.SpecID(), partition, e.SequenceNum())
-			}
-		}
+	for _, partial := range workerSurveys {
+		survey.merge(partial)
 	}
 
 	if specs == nil {
@@ -144,4 +182,17 @@ func collectDeadEqualityDeletes(
 	}
 
 	return DecideDeadEqualityDeletesWithSpecs(survey, candidates, specs)
+}
+
+// merge combines independent minima without changing conservative or spec-aware
+// applicability. It is only called after the workers have finished.
+func (s *SurvivorSurvey) merge(other *SurvivorSurvey) {
+	s.EmptyPartMinSeq = min(s.EmptyPartMinSeq, other.EmptyPartMinSeq)
+	s.minSeq = min(s.minSeq, other.minSeq)
+	for key, seq := range other.PartMinSeq {
+		updatePartitionMinSeq(s.PartMinSeq, key, seq)
+	}
+	for key, seq := range other.specPartMinSeq {
+		updatePartitionMinSeq(s.specPartMinSeq, key, seq)
+	}
 }
