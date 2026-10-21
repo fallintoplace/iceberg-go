@@ -211,7 +211,8 @@ func (i InspectTable) manifestEntryReaderFromManifestSource(
 			_ = yield(nil, err)
 		}
 
-		for manifest, sourceErr := range source {
+		for prefetched, sourceErr := range inspectManifestPrefetchSource(
+			ctx, fs, source, includeManifest, i.manifestPrefetchConcurrency) {
 			if sourceErr != nil {
 				yieldError(sourceErr)
 
@@ -222,11 +223,8 @@ func (i InspectTable) manifestEntryReaderFromManifestSource(
 
 				return
 			}
-			if includeManifest != nil && !includeManifest(manifest) {
-				continue
-			}
-
-			for entry, err := range manifest.Entries(fs, discardDeleted) {
+			manifest := prefetched.manifest
+			for entry, err := range manifest.Entries(prefetched.fileIO, discardDeleted) {
 				if err != nil {
 					yieldError(fmt.Errorf("read manifest %s: %w", manifest.FilePath(), err))
 
