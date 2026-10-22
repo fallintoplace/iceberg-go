@@ -2261,9 +2261,117 @@ func assignMissingPartitionFieldIDs(b []byte) ([]byte, error) {
 	return assignMissingPartitionFieldIDsFromMetadata(b, metadata)
 }
 
+
+// partitionSpecFieldIDProbe avoids allocating a map for each field when
+// all fields already have IDs, the normal case for v2/v3 metadata.
+type partitionSpecFieldIDProbe struct {
+	ID     *int              `json:"spec-id"`
+	Fields []json.RawMessage `json:"fields"`
+}
+
+// hasExactPartitionFieldID only recognizes the literal top-level "field-id"
+// key. Encoded keys and unusual spelling fall back to the normal map-based
+// normalization, preserving the existing exact-key behavior.
+func hasExactPartitionFieldID(field []byte) bool {
+	const key = `"field-id"`
+	depth := 0
+	inString, escaped := false, false
+	for i := 0; i < len(field); i++ {
+		switch c := field[i]; {
+		case inString:
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"':
+			if depth == 1 && len(field)-i >= len(key) && string(field[i:i+len(key)]) == key {
+				j := i + len(key)
+				for j < len(field) {
+					switch field[j] {
+					case ' ', '\t', '\r', '\n':
+						j++
+					default:
+						if field[j] == ':' {
+							return true
+						}
+						j = len(field)
+					}
+				}
+			}
+			inString = true
+		case c == '{' || c == '[':
+			depth++
+		case c == '}' || c == ']':
+			depth--
+		}
+	}
+
+	return false
+}
+
+func partitionSpecsNeedFieldIDNormalization(rawSpecs json.RawMessage) (bool, error) {
+	var specs []partitionSpecFieldIDProbe
+	if err := json.Unmarshal(rawSpecs, &specs); err != nil {
+		return false, err
+	}
+	for i, spec := range specs {
+		if spec.ID == nil {
+			return false, fmt.Errorf("%w: partition spec at index %d is missing required spec-id", ErrInvalidMetadata, i)
+		}
+	}
+	for _, spec := range specs {
+		for _, field := range spec.Fields {
+			if !hasExactPartitionFieldID(field) {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func partitionFieldsNeedFieldIDNormalization(rawFields json.RawMessage) (bool, error) {
+	var fields []json.RawMessage
+	if err := json.Unmarshal(rawFields, &fields); err != nil {
+		return false, err
+	}
+	for _, field := range fields {
+		if !hasExactPartitionFieldID(field) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func assignMissingPartitionFieldIDsFromMetadata(b []byte, metadata map[string]json.RawMessage) ([]byte, error) {
 	if err := requireLastUpdatedMS(metadata); err != nil {
 		return nil, err
+	}
+
+	// Most metadata is already normalized. Only materialize per-field maps
+	// when a field may need an ID assigned.
+	if rawSpecs, ok := metadata["partition-specs"]; ok {
+		needed, err := partitionSpecsNeedFieldIDNormalization(rawSpecs)
+		if err != nil {
+			return nil, err
+		}
+		if !needed {
+			return b, nil
+		}
+	} else if rawFields, ok := metadata["partition-spec"]; ok {
+		needed, err := partitionFieldsNeedFieldIDNormalization(rawFields)
+		if err != nil {
+			return nil, err
+		}
+		if !needed {
+			return b, nil
+		}
+	} else {
+		return b, nil
 	}
 
 	var specs []rawPartitionSpec
