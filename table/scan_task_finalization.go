@@ -184,15 +184,20 @@ func (scan *Scan) finalizeTaskRange(
 
 		result.metrics.addResultDeleteMetrics(*task)
 		result.metrics.totalFileSize += task.File.FileSizeBytes()
-		if splitTasks, split := splitParquetScanTask(*task, splitTargetSize); split {
+		// Reuse the split append path so local planning does not allocate a
+		// temporary slice for every splittable Parquet file.
+		offsets, fileSize, split := splittableParquetOffsets(*task, splitTargetSize)
+		if split {
 			if !result.expanded {
 				result.expanded = true
 				// A mixed range keeps the unsplit prefix; reserve extra space
 				// once to avoid repeated append growth when more files split.
-				result.tasks = make([]FileScanTask, 0, max((end-start)*2, index-start+len(splitTasks)))
+				result.tasks = make([]FileScanTask, 0, max((end-start)*2,
+					index-start+parquetSplitCapacity(len(offsets), fileSize, splitTargetSize)))
 				result.tasks = append(result.tasks, plannedTasks[start:index]...)
 			}
-			result.tasks = append(result.tasks, splitTasks...)
+			result.tasks = appendParquetTaskSplits(
+				result.tasks, *task, offsets, fileSize, splitTargetSize)
 		} else if result.expanded {
 			result.tasks = append(result.tasks, *task)
 		}
