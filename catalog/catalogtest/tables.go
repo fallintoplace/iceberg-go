@@ -76,7 +76,7 @@ func testDropTable(t *testing.T, cfg Config) {
 
 	require.NoError(t, cat.DropTable(ctx, ident))
 
-	exists, err := cat.CheckTableExists(ctx, ident)
+	exists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.False(t, exists, "table should not exist after drop")
 
@@ -116,7 +116,7 @@ func testRenameTableNotSupported(t *testing.T, cfg Config) {
 	_, err = cat.RenameTable(ctx, from, to)
 	assert.ErrorIs(t, err, iceberg.ErrNotImplemented)
 
-	exists, err := cat.CheckTableExists(ctx, from)
+	exists, err := cat.TableExists(ctx, from)
 	require.NoError(t, err)
 	assert.True(t, exists, "source table should still exist after an unsupported rename")
 }
@@ -143,7 +143,7 @@ func testRenameTable(t *testing.T, cfg Config) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cat.DropTable(ctx, to) })
 
-	exists, err := cat.CheckTableExists(ctx, from)
+	exists, err := cat.TableExists(ctx, from)
 	require.NoError(t, err)
 	assert.False(t, exists, "source table should not exist after rename")
 
@@ -257,7 +257,7 @@ func testRenameTableToMissingNamespace(t *testing.T, cfg Config) {
 	_, err = cat.RenameTable(ctx, from, to)
 	assert.ErrorIs(t, err, catalog.ErrNoSuchNamespace)
 
-	exists, err := cat.CheckTableExists(ctx, from)
+	exists, err := cat.TableExists(ctx, from)
 	require.NoError(t, err)
 	assert.True(t, exists, "source table should still exist after a rejected rename")
 }

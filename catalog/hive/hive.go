@@ -251,7 +251,7 @@ func (c *Catalog) RegisterTable(ctx context.Context, identifier table.Identifier
 		return nil, err
 	}
 
-	exists, err := c.CheckNamespaceExists(ctx, DatabaseIdentifier(database))
+	exists, err := c.NamespaceExists(ctx, DatabaseIdentifier(database))
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (c *Catalog) RegisterTable(ctx context.Context, identifier table.Identifier
 		return nil, fmt.Errorf("%w: %s.%s", catalog.ErrViewAlreadyExists, database, tableName)
 	}
 
-	tableExists, err := c.CheckTableExists(ctx, identifier)
+	tableExists, err := c.TableExists(ctx, identifier)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +319,7 @@ func (c *Catalog) CreateView(ctx context.Context, identifier table.Identifier, v
 		opt(&cfg)
 	}
 
-	exists, err := c.CheckNamespaceExists(ctx, DatabaseIdentifier(database))
+	exists, err := c.NamespaceExists(ctx, DatabaseIdentifier(database))
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (c *Catalog) CreateView(ctx context.Context, identifier table.Identifier, v
 		return nil, fmt.Errorf("%w: %s.%s", catalog.ErrViewAlreadyExists, database, viewName)
 	}
 
-	tableExists, err := c.CheckTableExists(ctx, identifier)
+	tableExists, err := c.TableExists(ctx, identifier)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +485,7 @@ func (c *Catalog) RenameTable(ctx context.Context, from, to table.Identifier) (_
 		return nil, err
 	}
 
-	exists, err := c.CheckNamespaceExists(ctx, DatabaseIdentifier(toDB))
+	exists, err := c.NamespaceExists(ctx, DatabaseIdentifier(toDB))
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +539,7 @@ func (c *Catalog) RenameTable(ctx context.Context, from, to table.Identifier) (_
 			table.ErrCommitFailed, fromDB, fromTable, sourceMetadataLocation, lockedMetadataLocation)
 	}
 
-	// Use a raw GetTable instead of CheckTableExists so that non-Iceberg
+	// Use a raw GetTable instead of TableExists so that non-Iceberg
 	// Hive tables at the destination are also detected as conflicts.
 	_, err = c.client.GetTable(ctx, toDB, toTable)
 	if err == nil {
@@ -642,8 +642,8 @@ func (c *Catalog) CommitTable(ctx context.Context, identifier table.Identifier, 
 	return staged.Metadata(), staged.MetadataLocation(), nil
 }
 
-// CheckTableExists checks if a table exists in the catalog.
-func (c *Catalog) CheckTableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
+// TableExists checks if a table exists in the catalog.
+func (c *Catalog) TableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
 	database, tableName, err := identifierToTableName(identifier)
 	if err != nil {
 		return false, err
@@ -671,7 +671,7 @@ func (c *Catalog) ListViews(ctx context.Context, namespace table.Identifier) ite
 			return
 		}
 
-		exists, err := c.CheckNamespaceExists(ctx, DatabaseIdentifier(database))
+		exists, err := c.NamespaceExists(ctx, DatabaseIdentifier(database))
 		if err != nil {
 			yield(nil, err)
 
@@ -903,8 +903,8 @@ func (c *Catalog) DropNamespace(ctx context.Context, namespace table.Identifier)
 	return nil
 }
 
-// CheckNamespaceExists checks if a namespace exists in the catalog.
-func (c *Catalog) CheckNamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
+// NamespaceExists checks if a namespace exists in the catalog.
+func (c *Catalog) NamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
 	database, err := identifierToDatabase(namespace)
 	if err != nil {
 		return false, err

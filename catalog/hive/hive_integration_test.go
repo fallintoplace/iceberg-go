@@ -121,7 +121,7 @@ func TestHiveIntegrationCreateAndDropNamespace(t *testing.T) {
 	assert.NoError(err)
 
 	// Check it exists
-	exists, err := cat.CheckNamespaceExists(context.TODO(), DatabaseIdentifier(dbName))
+	exists, err := cat.NamespaceExists(context.TODO(), DatabaseIdentifier(dbName))
 	assert.NoError(err)
 	assert.True(exists)
 
@@ -135,7 +135,7 @@ func TestHiveIntegrationCreateAndDropNamespace(t *testing.T) {
 	assert.NoError(err)
 
 	// Verify it's gone
-	exists, err = cat.CheckNamespaceExists(context.TODO(), DatabaseIdentifier(dbName))
+	exists, err = cat.NamespaceExists(context.TODO(), DatabaseIdentifier(dbName))
 	assert.NoError(err)
 	assert.False(exists)
 }
@@ -212,7 +212,7 @@ func TestHiveIntegrationCreateAndListTables(t *testing.T) {
 	defer cat.DropTable(context.TODO(), TableIdentifier(dbName, tableName))
 
 	// Verify table exists
-	exists, err := cat.CheckTableExists(context.TODO(), TableIdentifier(dbName, tableName))
+	exists, err := cat.TableExists(context.TODO(), TableIdentifier(dbName, tableName))
 	assert.NoError(err)
 	assert.True(exists)
 
@@ -312,12 +312,12 @@ func TestHiveIntegrationRenameTable(t *testing.T) {
 	defer cat.DropTable(context.TODO(), TableIdentifier(dbName, newTableName))
 
 	// Verify old table doesn't exist
-	exists, err := cat.CheckTableExists(context.TODO(), TableIdentifier(dbName, oldTableName))
+	exists, err := cat.TableExists(context.TODO(), TableIdentifier(dbName, oldTableName))
 	assert.NoError(err)
 	assert.False(exists)
 
 	// Verify new table exists
-	exists, err = cat.CheckTableExists(context.TODO(), TableIdentifier(dbName, newTableName))
+	exists, err = cat.TableExists(context.TODO(), TableIdentifier(dbName, newTableName))
 	assert.NoError(err)
 	assert.True(exists)
 }
@@ -350,7 +350,7 @@ func TestHiveIntegrationDropTable(t *testing.T) {
 	assert.NoError(err)
 
 	// Verify table exists
-	exists, err := cat.CheckTableExists(context.TODO(), TableIdentifier(dbName, tableName))
+	exists, err := cat.TableExists(context.TODO(), TableIdentifier(dbName, tableName))
 	assert.NoError(err)
 	assert.True(exists)
 
@@ -359,7 +359,7 @@ func TestHiveIntegrationDropTable(t *testing.T) {
 	assert.NoError(err)
 
 	// Verify table is gone
-	exists, err = cat.CheckTableExists(context.TODO(), TableIdentifier(dbName, tableName))
+	exists, err = cat.TableExists(context.TODO(), TableIdentifier(dbName, tableName))
 	assert.NoError(err)
 	assert.False(exists)
 }

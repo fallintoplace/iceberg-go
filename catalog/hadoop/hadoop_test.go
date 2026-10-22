@@ -1025,18 +1025,18 @@ func (s *HadoopCatalogTestSuite) TestDropNameSpaceFileInsteadofDir() {
 	s.False(info.IsDir())
 }
 
-// CheckNamespaceExists tests
+// NamespaceExists tests
 
-func (s *HadoopCatalogTestSuite) TestCheckNamespaceExistsTrue() {
+func (s *HadoopCatalogTestSuite) TestNamespaceExistsTrue() {
 	s.Require().NoError(os.Mkdir(filepath.Join(s.warehouse, "ns"), 0o755))
 
-	exists, err := s.cat.CheckNamespaceExists(context.Background(), []string{"ns"})
+	exists, err := s.cat.NamespaceExists(context.Background(), []string{"ns"})
 	s.Require().NoError(err)
 	s.True(exists)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckNamespaceExistsFalse() {
-	exists, err := s.cat.CheckNamespaceExists(context.Background(), []string{"nope"})
+func (s *HadoopCatalogTestSuite) TestNamespaceExistsFalse() {
+	exists, err := s.cat.NamespaceExists(context.Background(), []string{"nope"})
 	s.Require().NoError(err)
 	s.False(exists)
 }
@@ -1076,7 +1076,7 @@ func (s *HadoopCatalogTestSuite) TestListNamespacesNested() {
 	s.Require().NoError(err)
 	s.ElementsMatch(expected, namespaces)
 	for _, namespace := range namespaces {
-		exists, err := s.cat.CheckNamespaceExists(ctx, namespace)
+		exists, err := s.cat.NamespaceExists(ctx, namespace)
 		s.Require().NoError(err)
 		s.True(exists)
 	}
@@ -1085,7 +1085,7 @@ func (s *HadoopCatalogTestSuite) TestListNamespacesNested() {
 	s.Require().NoError(err)
 	s.Require().Equal([]table.Identifier{grandchild}, namespaces)
 
-	exists, err := s.cat.CheckNamespaceExists(ctx, namespaces[0])
+	exists, err := s.cat.NamespaceExists(ctx, namespaces[0])
 	s.Require().NoError(err)
 	s.True(exists)
 }
@@ -1146,12 +1146,12 @@ func (s *HadoopCatalogTestSuite) TestDropNamespaceWithRegularFilesOnly() {
 	s.ErrorIs(err, catalog.ErrNamespaceNotEmpty)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckNamespaceExistsFileNotDir() {
+func (s *HadoopCatalogTestSuite) TestNamespaceExistsFileNotDir() {
 	// A file at the namespace path should return false (not a directory).
 	filePath := filepath.Join(s.warehouse, "not_a_dir")
 	s.Require().NoError(os.WriteFile(filePath, nil, 0o644))
 
-	exists, err := s.cat.CheckNamespaceExists(context.Background(), []string{"not_a_dir"})
+	exists, err := s.cat.NamespaceExists(context.Background(), []string{"not_a_dir"})
 	s.Require().NoError(err)
 	s.False(exists)
 }
@@ -1251,8 +1251,8 @@ func (s *HadoopCatalogTestSuite) TestLoadNamespacePropertiesRejectsInvalid() {
 	s.NotErrorIs(err, catalog.ErrNoSuchNamespace)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckNamespaceExistsRejectsInvalid() {
-	_, err := s.cat.CheckNamespaceExists(context.Background(), []string{"a/b"})
+func (s *HadoopCatalogTestSuite) TestNamespaceExistsRejectsInvalid() {
+	_, err := s.cat.NamespaceExists(context.Background(), []string{"a/b"})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, catalog.ErrInvalidIdentifier)
 	s.NotErrorIs(err, catalog.ErrNoSuchNamespace)
@@ -1941,7 +1941,7 @@ func (s *HadoopCatalogTestSuite) TestPurgeTableRemovesTableRoot() {
 	_, err = os.Stat(tablePath)
 	s.ErrorIs(err, fs.ErrNotExist)
 
-	exists, err := s.cat.CheckTableExists(ctx, ident)
+	exists, err := s.cat.TableExists(ctx, ident)
 	s.Require().NoError(err)
 	s.False(exists)
 }
@@ -1966,7 +1966,7 @@ func (s *HadoopCatalogTestSuite) TestPurgeTableGCDisabledPreservesData() {
 	s.ErrorIs(err, fs.ErrNotExist)
 	s.FileExists(dataPath)
 
-	exists, err := s.cat.CheckTableExists(ctx, ident)
+	exists, err := s.cat.TableExists(ctx, ident)
 	s.Require().NoError(err)
 	s.False(exists)
 }
@@ -2194,7 +2194,7 @@ func (s *HadoopCatalogTestSuite) TestLoadTableGzipMetadata() {
 	s.Equal(created.Metadata().TableUUID(), loaded.Metadata().TableUUID())
 	s.Equal(gzPath, loaded.MetadataLocation())
 
-	exists, err := s.cat.CheckTableExists(ctx, ident)
+	exists, err := s.cat.TableExists(ctx, ident)
 	s.Require().NoError(err)
 	s.True(exists)
 }
@@ -2213,7 +2213,7 @@ func (s *HadoopCatalogTestSuite) TestLoadTableUUIDMetadata() {
 	s.Equal(created.Metadata().TableUUID(), loaded.Metadata().TableUUID())
 	s.Equal(uuidPath, loaded.MetadataLocation())
 
-	exists, err := s.cat.CheckTableExists(ctx, ident)
+	exists, err := s.cat.TableExists(ctx, ident)
 	s.Require().NoError(err)
 	s.True(exists)
 }
@@ -2232,7 +2232,7 @@ func (s *HadoopCatalogTestSuite) TestLoadTableUUIDMetadataVersionZero() {
 	s.Equal(created.Metadata().TableUUID(), loaded.Metadata().TableUUID())
 	s.Equal(uuidPath, loaded.MetadataLocation())
 
-	exists, err := s.cat.CheckTableExists(ctx, ident)
+	exists, err := s.cat.TableExists(ctx, ident)
 	s.Require().NoError(err)
 	s.True(exists)
 }
@@ -2244,7 +2244,7 @@ func (s *HadoopCatalogTestSuite) TestVersionHintWithoutMetadataIsNotLoadableTabl
 	s.Require().NoError(os.MkdirAll(metaDir, 0o755))
 	s.cat.writeVersionHint(ident, 1)
 
-	exists, err := s.cat.CheckTableExists(ctx, ident)
+	exists, err := s.cat.TableExists(ctx, ident)
 	s.Require().NoError(err)
 	s.False(exists)
 
@@ -2270,27 +2270,27 @@ func (s *HadoopCatalogTestSuite) TestLoadTableShortIdentifier() {
 	s.Contains(err.Error(), "at least a namespace and table name")
 }
 
-// CheckTableExists tests
+// TableExists tests
 
-func (s *HadoopCatalogTestSuite) TestCheckTableExistsTrue() {
+func (s *HadoopCatalogTestSuite) TestTableExistsTrue() {
 	ctx := context.Background()
 	s.Require().NoError(os.Mkdir(filepath.Join(s.warehouse, "ns"), 0o755))
 
 	_, err := s.cat.CreateTable(ctx, []string{"ns", "tbl"}, s.testSchema())
 	s.Require().NoError(err)
 
-	exists, err := s.cat.CheckTableExists(ctx, []string{"ns", "tbl"})
+	exists, err := s.cat.TableExists(ctx, []string{"ns", "tbl"})
 	s.Require().NoError(err)
 	s.True(exists)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckTableExistsFalse() {
-	exists, err := s.cat.CheckTableExists(context.Background(), []string{"ns", "tbl"})
+func (s *HadoopCatalogTestSuite) TestTableExistsFalse() {
+	exists, err := s.cat.TableExists(context.Background(), []string{"ns", "tbl"})
 	s.Require().NoError(err)
 	s.False(exists)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckTableExistsPropagatesMetadataReadError() {
+func (s *HadoopCatalogTestSuite) TestTableExistsPropagatesMetadataReadError() {
 	walkErr := errors.New("metadata walk failed")
 	originalFS := s.cat.filesystem
 	s.cat.filesystem = failingWalkFS{HadoopCatalogFS: originalFS, err: walkErr}
@@ -2298,22 +2298,22 @@ func (s *HadoopCatalogTestSuite) TestCheckTableExistsPropagatesMetadataReadError
 		s.cat.filesystem = originalFS
 	}()
 
-	exists, err := s.cat.CheckTableExists(context.Background(), []string{"ns", "tbl"})
+	exists, err := s.cat.TableExists(context.Background(), []string{"ns", "tbl"})
 	s.False(exists)
 	s.Require().Error(err)
 	s.ErrorIs(err, walkErr)
 	s.NotErrorIs(err, catalog.ErrNoSuchTable)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckTableExistsShortIdentifier() {
-	exists, err := s.cat.CheckTableExists(context.Background(), []string{"tbl"})
+func (s *HadoopCatalogTestSuite) TestTableExistsShortIdentifier() {
+	exists, err := s.cat.TableExists(context.Background(), []string{"tbl"})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, catalog.ErrInvalidIdentifier)
 	s.NotErrorIs(err, catalog.ErrNoSuchTable)
 	s.False(exists)
 }
 
-func (s *HadoopCatalogTestSuite) TestCheckTableExistsInvalidIdentifierFalse() {
+func (s *HadoopCatalogTestSuite) TestTableExistsInvalidIdentifierFalse() {
 	tests := []struct {
 		name  string
 		ident table.Identifier
@@ -2332,7 +2332,7 @@ func (s *HadoopCatalogTestSuite) TestCheckTableExistsInvalidIdentifierFalse() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exists, err := s.cat.CheckTableExists(context.Background(), tt.ident)
+			exists, err := s.cat.TableExists(context.Background(), tt.ident)
 			s.Require().Error(err)
 			s.Require().ErrorIs(err, catalog.ErrInvalidIdentifier)
 			s.NotErrorIs(err, catalog.ErrNoSuchTable)

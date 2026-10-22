@@ -91,24 +91,24 @@ func (s *OrphanCleanupIntegrationSuite) SetupSuite() {
 }
 
 func (s *OrphanCleanupIntegrationSuite) TearDownSuite() {
-	if exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespace, TestTableName)); err == nil && exists {
+	if exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespace, TestTableName)); err == nil && exists {
 		s.NoError(s.cat.DropTable(s.ctx, catalog.ToIdentifier(TestNamespace, TestTableName)))
 	}
 
-	if exists, err := s.cat.CheckNamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespace)); err == nil && exists {
+	if exists, err := s.cat.NamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespace)); err == nil && exists {
 		s.NoError(s.cat.DropNamespace(s.ctx, catalog.ToIdentifier(TestNamespace)))
 	}
 }
 
 func (s *OrphanCleanupIntegrationSuite) SetupTest() {
-	if exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespace, TestTableName)); err == nil && exists {
+	if exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespace, TestTableName)); err == nil && exists {
 		s.Require().NoError(s.cat.DropTable(s.ctx, catalog.ToIdentifier(TestNamespace, TestTableName)))
 	}
 }
 
 func (s *OrphanCleanupIntegrationSuite) ensureNamespace() {
 	namespace := catalog.ToIdentifier(TestNamespace)
-	exists, err := s.cat.CheckNamespaceExists(s.ctx, namespace)
+	exists, err := s.cat.NamespaceExists(s.ctx, namespace)
 	s.Require().NoError(err)
 
 	if exists {

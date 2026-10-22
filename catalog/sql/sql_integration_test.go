@@ -152,7 +152,7 @@ var tableSchemaNestedTest = iceberg.NewSchemaWithIdentifiers(1,
 )
 
 func (s *SQLIntegrationSuite) ensureNamespace() {
-	exists, err := s.cat.CheckNamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
+	exists, err := s.cat.NamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
 	s.Require().NoError(err)
 	if exists {
 		s.Require().NoError(s.cat.DropNamespace(s.ctx, catalog.ToIdentifier(TestNamespaceIdent)))
@@ -163,7 +163,7 @@ func (s *SQLIntegrationSuite) ensureNamespace() {
 }
 
 func (s *SQLIntegrationSuite) TestCreateNamespace() {
-	exists, err := s.cat.CheckNamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
+	exists, err := s.cat.NamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
 	s.Require().NoError(err)
 	if exists {
 		s.Require().NoError(s.cat.DropNamespace(s.ctx, catalog.ToIdentifier(TestNamespaceIdent)))
@@ -209,7 +209,7 @@ func (s *SQLIntegrationSuite) TestCreateTable() {
 	s.Equal(location, tbl.Location())
 	s.Equal("baz", tbl.Properties()["foobar"])
 
-	exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
+	exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
 	s.Require().NoError(err)
 	s.True(exists)
 
@@ -230,7 +230,7 @@ func (s *SQLIntegrationSuite) TestCreateView() {
 	s.Equal(location, tbl.Location())
 	s.Equal("baz", tbl.Properties()["foobar"])
 
-	exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
+	exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
 	s.Require().NoError(err)
 	s.True(exists)
 

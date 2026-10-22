@@ -1250,7 +1250,7 @@ func TestGlueDropNamespaceGetTablesError(t *testing.T) {
 	mockGlueSvc.AssertExpectations(t)
 }
 
-func TestGlueCheckNamespaceExists(t *testing.T) {
+func TestGlueNamespaceExists(t *testing.T) {
 	assert := require.New(t)
 	mockGlueSvc := &mockGlueClient{}
 	mockGlueSvc.On("GetDatabase", mock.Anything, &glue.GetDatabaseInput{
@@ -1266,7 +1266,7 @@ func TestGlueCheckNamespaceExists(t *testing.T) {
 	glueCatalog := &Catalog{
 		glueSvc: mockGlueSvc,
 	}
-	exists, err := glueCatalog.CheckNamespaceExists(context.TODO(), DatabaseIdentifier("test_namespace"))
+	exists, err := glueCatalog.NamespaceExists(context.TODO(), DatabaseIdentifier("test_namespace"))
 	assert.NoError(err)
 	assert.True(exists)
 }
@@ -1284,7 +1284,7 @@ func TestGlueCheckNamespaceNotExists(t *testing.T) {
 		glueSvc: mockGlueSvc,
 	}
 
-	exists, err := glueCatalog.CheckNamespaceExists(context.TODO(), DatabaseIdentifier("nonexistent_namespace"))
+	exists, err := glueCatalog.NamespaceExists(context.TODO(), DatabaseIdentifier("nonexistent_namespace"))
 	assert.Nil(err)
 	assert.False(exists)
 }
@@ -1440,7 +1440,7 @@ func TestGlueRenameTable(t *testing.T) {
 
 	mockGlueSvc := &mockGlueClient{}
 
-	// Mock GetDatabase response for CheckNamespaceExists
+	// Mock GetDatabase response for NamespaceExists
 	mockGlueSvc.On("GetDatabase", mock.Anything, &glue.GetDatabaseInput{
 		Name: aws.String("new_test_database"),
 	}, mock.Anything).Return(&glue.GetDatabaseOutput{
@@ -1599,7 +1599,7 @@ func TestGlueRenameTable_DeleteTableFailureRollback(t *testing.T) {
 
 	mockGlueSvc := &mockGlueClient{}
 
-	// Mock GetDatabase response for CheckNamespaceExists
+	// Mock GetDatabase response for NamespaceExists
 	mockGlueSvc.On("GetDatabase", mock.Anything, &glue.GetDatabaseInput{
 		Name: aws.String("test_database"),
 	}, mock.Anything).Return(&glue.GetDatabaseOutput{
@@ -1992,7 +1992,7 @@ func TestGlueCreateTableInvalidMetadataRollback(t *testing.T) {
 	assert.Error(err, "expected table to not exist after failed creation")
 	assert.True(strings.Contains(err.Error(), "table does not exist"), "expected EntityNotFoundException error")
 	// Verify that the table was not left in the catalog
-	tablesIter := ctlg.ListTables(context.TODO(), DatabaseIdentifier(dbName)) // TODO: Implement CheckTableExists
+	tablesIter := ctlg.ListTables(context.TODO(), DatabaseIdentifier(dbName)) // TODO: Implement TableExists
 	found := false
 	for tbl, err := range tablesIter {
 		if tbl[1] == newTableName {
@@ -2336,7 +2336,7 @@ func TestSnapshotManagementIntegration(t *testing.T) {
 	assert.Equal(newSnap.Summary.Operation, currSnap.Summary.Operation)
 }
 
-func TestGlueCheckTableExists(t *testing.T) {
+func TestGlueTableExists(t *testing.T) {
 	assert := require.New(t)
 	mockGlueSvc := &mockGlueClient{}
 	mockGlueSvc.On("GetTable", mock.Anything, &glue.GetTableInput{
@@ -2346,7 +2346,7 @@ func TestGlueCheckTableExists(t *testing.T) {
 	glueCatalog := &Catalog{
 		glueSvc: mockGlueSvc,
 	}
-	exists, err := glueCatalog.CheckTableExists(context.TODO(), TableIdentifier("test_database", "test_table"))
+	exists, err := glueCatalog.TableExists(context.TODO(), TableIdentifier("test_database", "test_table"))
 	assert.NoError(err)
 	assert.True(exists)
 }
@@ -2365,7 +2365,7 @@ func TestGlueCheckTableNotExists(t *testing.T) {
 		glueSvc: mockGlueSvc,
 	}
 
-	exists, err := glueCatalog.CheckTableExists(context.TODO(), TableIdentifier("test_database", "nonexistent_table"))
+	exists, err := glueCatalog.TableExists(context.TODO(), TableIdentifier("test_database", "nonexistent_table"))
 	assert.Nil(err)
 	assert.False(exists)
 }
@@ -2613,7 +2613,7 @@ func TestTableOperationsRejectEmptyIdentifiers(t *testing.T) {
 		require.ErrorIs(t, err, catalog.ErrNoSuchTable)
 		_, err = cat.RenameTable(ctx, valid, ident)
 		require.ErrorIs(t, err, catalog.ErrNoSuchTable)
-		_, err = cat.CheckTableExists(ctx, ident)
+		_, err = cat.TableExists(ctx, ident)
 		require.ErrorIs(t, err, catalog.ErrNoSuchTable)
 	}
 }

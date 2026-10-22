@@ -85,7 +85,7 @@ func (s *fullStubCatalog) RenameTable(context.Context, table.Identifier, table.I
 	return nil, nil
 }
 
-func (s *fullStubCatalog) CheckTableExists(context.Context, table.Identifier) (bool, error) {
+func (s *fullStubCatalog) TableExists(context.Context, table.Identifier) (bool, error) {
 	return false, nil
 }
 
@@ -99,7 +99,7 @@ func (s *fullStubCatalog) CreateNamespace(context.Context, table.Identifier, ice
 
 func (s *fullStubCatalog) DropNamespace(context.Context, table.Identifier) error { return nil }
 
-func (s *fullStubCatalog) CheckNamespaceExists(context.Context, table.Identifier) (bool, error) {
+func (s *fullStubCatalog) NamespaceExists(context.Context, table.Identifier) (bool, error) {
 	return false, nil
 }
 

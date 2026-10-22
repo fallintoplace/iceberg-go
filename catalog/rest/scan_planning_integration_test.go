@@ -225,7 +225,7 @@ func loadScanPlanningCatalog(ctx context.Context, opts ...rest.Option) (*rest.Ca
 
 func (s *RestIntegrationSuite) ensureNamespaceIn(cat *rest.Catalog) {
 	s.T().Helper()
-	exists, err := cat.CheckNamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
+	exists, err := cat.NamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
 	s.Require().NoError(err)
 	if exists {
 		s.Require().NoError(cat.DropNamespace(s.ctx, catalog.ToIdentifier(TestNamespaceIdent)))

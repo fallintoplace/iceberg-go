@@ -67,8 +67,8 @@ func (m *mockCatalogForProperties) RenameTable(context.Context, table.Identifier
 	panic("RenameTable must not be called")
 }
 
-func (m *mockCatalogForProperties) CheckTableExists(context.Context, table.Identifier) (bool, error) {
-	panic("CheckTableExists must not be called")
+func (m *mockCatalogForProperties) TableExists(context.Context, table.Identifier) (bool, error) {
+	panic("TableExists must not be called")
 }
 
 func (m *mockCatalogForProperties) ListNamespaces(context.Context, table.Identifier) ([]table.Identifier, error) {
@@ -83,8 +83,8 @@ func (m *mockCatalogForProperties) DropNamespace(context.Context, table.Identifi
 	panic("DropNamespace must not be called")
 }
 
-func (m *mockCatalogForProperties) CheckNamespaceExists(context.Context, table.Identifier) (bool, error) {
-	panic("CheckNamespaceExists must not be called")
+func (m *mockCatalogForProperties) NamespaceExists(context.Context, table.Identifier) (bool, error) {
+	panic("NamespaceExists must not be called")
 }
 
 func (m *mockCatalogForProperties) UpdateNamespaceProperties(context.Context, table.Identifier, []string, iceberg.Properties) (catalog.PropertiesUpdateSummary, error) {

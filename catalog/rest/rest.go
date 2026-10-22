@@ -2373,7 +2373,7 @@ func (r *Catalog) UpdateNamespaceProperties(ctx context.Context, namespace table
 		payload{Remove: removals, Updates: updates}, r.cl, map[int]error{http.StatusNotFound: catalog.ErrNoSuchNamespace})
 }
 
-func (r *Catalog) CheckNamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
+func (r *Catalog) NamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
 	if err := r.checkValidNamespace(namespace); err != nil {
 		return false, err
 	}
@@ -2411,7 +2411,7 @@ func (r *Catalog) CheckNamespaceExists(ctx context.Context, namespace table.Iden
 	return true, nil
 }
 
-func (r *Catalog) CheckTableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
+func (r *Catalog) TableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
 	identPath, err := r.tableIdentifierPath(identifier)
 	if err != nil {
 		return false, err

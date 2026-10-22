@@ -130,7 +130,7 @@ var tableSchemaNested = iceberg.NewSchemaWithIdentifiers(1,
 )
 
 func (s *RestIntegrationSuite) ensureNamespace() {
-	exists, err := s.cat.CheckNamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
+	exists, err := s.cat.NamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
 	s.Require().NoError(err)
 	if exists {
 		s.Require().NoError(s.cat.DropNamespace(s.ctx, catalog.ToIdentifier(TestNamespaceIdent)))
@@ -141,7 +141,7 @@ func (s *RestIntegrationSuite) ensureNamespace() {
 }
 
 func (s *RestIntegrationSuite) TestCreateNamespace() {
-	exists, err := s.cat.CheckNamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
+	exists, err := s.cat.NamespaceExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent))
 	s.Require().NoError(err)
 	if exists {
 		s.Require().NoError(s.cat.DropNamespace(s.ctx, catalog.ToIdentifier(TestNamespaceIdent)))
@@ -186,7 +186,7 @@ func (s *RestIntegrationSuite) TestCreateTable() {
 	s.Equal("s3://warehouse/rest-integration-test/test-create-table", tbl.Location())
 	s.Equal("baz", tbl.Properties()["foobar"])
 
-	exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-create-table"))
+	exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-create-table"))
 	s.Require().NoError(err)
 	s.True(exists)
 
@@ -208,7 +208,7 @@ func (s *RestIntegrationSuite) TestCreateView() {
 	s.Equal(location, tbl.Location())
 	s.Equal("baz", tbl.Properties()["foobar"])
 
-	exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
+	exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
 	s.Require().NoError(err)
 	s.True(exists)
 
@@ -249,7 +249,7 @@ func (s *RestIntegrationSuite) TestUpdateView() {
 	s.Equal(location, tbl.Location())
 	s.Equal("baz", tbl.Properties()["foobar"])
 
-	exists, err := s.cat.CheckTableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
+	exists, err := s.cat.TableExists(s.ctx, catalog.ToIdentifier(TestNamespaceIdent, "test-table"))
 	s.Require().NoError(err)
 	s.True(exists)
 

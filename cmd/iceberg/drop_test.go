@@ -72,7 +72,7 @@ func (m *mockCatalogForDrop) RenameTable(ctx context.Context, from, to table.Ide
 	return nil, nil
 }
 
-func (m *mockCatalogForDrop) CheckTableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
+func (m *mockCatalogForDrop) TableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
 	return m.checkExists, m.checkExistsErr
 }
 
@@ -91,7 +91,7 @@ func (m *mockCatalogForDrop) DropNamespace(ctx context.Context, namespace table.
 	return nil
 }
 
-func (m *mockCatalogForDrop) CheckNamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
+func (m *mockCatalogForDrop) NamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
 	return false, nil
 }
 

@@ -268,7 +268,7 @@ func TestTableCacheInvalidation(t *testing.T) {
 			srv.mu.Lock()
 			srv.exists = false
 			srv.mu.Unlock()
-			if ok, err := cat.CheckTableExists(ctx, etagIdent); err != nil || ok {
+			if ok, err := cat.TableExists(ctx, etagIdent); err != nil || ok {
 				return assert.AnError
 			}
 			srv.mu.Lock()

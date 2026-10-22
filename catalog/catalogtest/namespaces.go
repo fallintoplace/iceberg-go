@@ -44,14 +44,14 @@ func testCreateNamespace(t *testing.T, cfg Config) {
 	cat := cfg.NewCatalog(t)
 	namespace, _ := newIdentifiers()
 
-	exists, err := cat.CheckNamespaceExists(ctx, namespace)
+	exists, err := cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.False(t, exists, "namespace should not exist before create")
 
 	require.NoError(t, cat.CreateNamespace(ctx, namespace, nil))
 	t.Cleanup(func() { _ = cat.DropNamespace(ctx, namespace) })
 
-	exists, err = cat.CheckNamespaceExists(ctx, namespace)
+	exists, err = cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.True(t, exists, "namespace should exist after create")
 }
@@ -63,7 +63,7 @@ func testCreateNamespaceThatAlreadyExists(t *testing.T, cfg Config) {
 	cat := cfg.NewCatalog(t)
 	namespace, _ := newIdentifiers()
 
-	exists, err := cat.CheckNamespaceExists(ctx, namespace)
+	exists, err := cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.False(t, exists, "namespace should not exist before create")
 
@@ -73,7 +73,7 @@ func testCreateNamespaceThatAlreadyExists(t *testing.T, cfg Config) {
 	err = cat.CreateNamespace(ctx, namespace, nil)
 	assert.ErrorIs(t, err, catalog.ErrNamespaceAlreadyExists)
 
-	exists, err = cat.CheckNamespaceExists(ctx, namespace)
+	exists, err = cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.True(t, exists, "original namespace should still exist after a rejected duplicate create")
 }
@@ -87,13 +87,13 @@ func testDropNamespace(t *testing.T, cfg Config) {
 	require.NoError(t, cat.CreateNamespace(ctx, namespace, nil))
 	t.Cleanup(func() { _ = cat.DropNamespace(ctx, namespace) })
 
-	exists, err := cat.CheckNamespaceExists(ctx, namespace)
+	exists, err := cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.True(t, exists, "namespace should exist after create")
 
 	require.NoError(t, cat.DropNamespace(ctx, namespace))
 
-	exists, err = cat.CheckNamespaceExists(ctx, namespace)
+	exists, err = cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.False(t, exists, "namespace should not exist after drop")
 }
@@ -132,11 +132,11 @@ func testDropNamespaceNotEmpty(t *testing.T, cfg Config) {
 	assert.ErrorIs(t, err, catalog.ErrNamespaceNotEmpty)
 
 	// A rejected drop must leave the namespace and its table intact.
-	nsExists, err := cat.CheckNamespaceExists(ctx, namespace)
+	nsExists, err := cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	assert.True(t, nsExists, "namespace should still exist after a rejected non-empty drop")
 
-	tableExists, err := cat.CheckTableExists(ctx, ident)
+	tableExists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.True(t, tableExists, "table should still exist after a rejected namespace drop")
 }
@@ -181,7 +181,7 @@ func testNamespacePropertiesNotSupported(t *testing.T, cfg Config) {
 	err := cat.CreateNamespace(ctx, namespace, iceberg.Properties{"prop": "val"})
 	require.ErrorIs(t, err, iceberg.ErrNotImplemented)
 
-	exists, err := cat.CheckNamespaceExists(ctx, namespace)
+	exists, err := cat.NamespaceExists(ctx, namespace)
 	require.NoError(t, err)
 	require.False(t, exists, "rejected create should not leave a namespace behind")
 

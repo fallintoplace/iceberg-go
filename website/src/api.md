@@ -25,7 +25,7 @@ For configuration knobs (catalog options, FileIO credentials, table properties),
 
 ## Catalog
 
-`catalog.Catalog` is the entry point for everything: namespaces, tables, views.
+`catalog.Catalog` combines the `catalog.TableCatalog` and `catalog.NamespaceCatalog` interfaces. Accept the narrower interface in code that only needs table or namespace operations. View support is an optional catalog capability.
 
 ### Constructing a catalog
 
@@ -122,7 +122,7 @@ ns := table.Identifier{"sales"}
 err := cat.CreateNamespace(ctx, ns, iceberg.Properties{"owner": "data-team"})
 
 namespaces, err := cat.ListNamespaces(ctx, nil) // []table.Identifier
-exists, err := cat.CheckNamespaceExists(ctx, ns)
+exists, err := cat.NamespaceExists(ctx, ns)
 props, err := cat.LoadNamespaceProperties(ctx, ns)
 summary, err := cat.UpdateNamespaceProperties(ctx, ns,
     []string{"deprecated"}, // removals
@@ -169,7 +169,7 @@ Optional `catalog.WithPartitionSpec`, `catalog.WithSortOrder`, and `catalog.With
 ```go
 tbl, err := cat.LoadTable(ctx, ident)
 
-exists, err := cat.CheckTableExists(ctx, ident)
+exists, err := cat.TableExists(ctx, ident)
 
 for ident, err := range cat.ListTables(ctx, table.Identifier{"sales"}) {
     if err != nil { /* ... */ }

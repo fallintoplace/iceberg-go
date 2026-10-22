@@ -600,7 +600,7 @@ func TestHiveDropNamespaceNotEmpty(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
-func TestHiveCheckNamespaceExists(t *testing.T) {
+func TestHiveNamespaceExists(t *testing.T) {
 	assert := require.New(t)
 
 	mockClient := &mockHiveClient{}
@@ -610,7 +610,7 @@ func TestHiveCheckNamespaceExists(t *testing.T) {
 
 	hiveCatalog := NewCatalogWithClient(mockClient, iceberg.Properties{})
 
-	exists, err := hiveCatalog.CheckNamespaceExists(context.TODO(), DatabaseIdentifier("existing_db"))
+	exists, err := hiveCatalog.NamespaceExists(context.TODO(), DatabaseIdentifier("existing_db"))
 	assert.NoError(err)
 	assert.True(exists)
 
@@ -627,7 +627,7 @@ func TestHiveCheckNamespaceNotExists(t *testing.T) {
 
 	hiveCatalog := NewCatalogWithClient(mockClient, iceberg.Properties{})
 
-	exists, err := hiveCatalog.CheckNamespaceExists(context.TODO(), DatabaseIdentifier("nonexistent_db"))
+	exists, err := hiveCatalog.NamespaceExists(context.TODO(), DatabaseIdentifier("nonexistent_db"))
 	assert.NoError(err)
 	assert.False(exists)
 
@@ -660,7 +660,7 @@ func TestHiveLoadNamespaceProperties(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
-func TestHiveCheckTableExists(t *testing.T) {
+func TestHiveTableExists(t *testing.T) {
 	assert := require.New(t)
 
 	mockClient := &mockHiveClient{}
@@ -670,7 +670,7 @@ func TestHiveCheckTableExists(t *testing.T) {
 
 	hiveCatalog := NewCatalogWithClient(mockClient, iceberg.Properties{})
 
-	exists, err := hiveCatalog.CheckTableExists(context.TODO(), TableIdentifier("test_database", "test_table"))
+	exists, err := hiveCatalog.TableExists(context.TODO(), TableIdentifier("test_database", "test_table"))
 	assert.NoError(err)
 	assert.True(exists)
 
@@ -687,14 +687,14 @@ func TestHiveCheckTableNotExists(t *testing.T) {
 
 	hiveCatalog := NewCatalogWithClient(mockClient, iceberg.Properties{})
 
-	exists, err := hiveCatalog.CheckTableExists(context.TODO(), TableIdentifier("test_database", "nonexistent"))
+	exists, err := hiveCatalog.TableExists(context.TODO(), TableIdentifier("test_database", "nonexistent"))
 	assert.NoError(err)
 	assert.False(exists)
 
 	mockClient.AssertExpectations(t)
 }
 
-func TestHiveCheckTableExistsNonIceberg(t *testing.T) {
+func TestHiveTableExistsNonIceberg(t *testing.T) {
 	assert := require.New(t)
 
 	mockClient := &mockHiveClient{}
@@ -704,7 +704,7 @@ func TestHiveCheckTableExistsNonIceberg(t *testing.T) {
 
 	hiveCatalog := NewCatalogWithClient(mockClient, iceberg.Properties{})
 
-	exists, err := hiveCatalog.CheckTableExists(context.TODO(), TableIdentifier("test_database", "other_table"))
+	exists, err := hiveCatalog.TableExists(context.TODO(), TableIdentifier("test_database", "other_table"))
 	assert.NoError(err)
 	assert.False(exists) // Non-Iceberg table should return false
 
@@ -1962,7 +1962,7 @@ func TestCreateView_TableAlreadyExists(t *testing.T) {
 
 	mockClient := &mockHiveClient{}
 	mockClient.On("GetDatabase", mock.Anything, "test_database").Return(&hive_metastore.Database{Name: "test_database"}, nil).Once()
-	// Called twice: once for CheckViewExists and once for CheckTableExists.
+	// Called twice: once for CheckViewExists and once for TableExists.
 	mockClient.On("GetTable", mock.Anything, "test_database", "test_table").Return(testIcebergHiveTable1, nil).Twice()
 
 	cat := NewCatalogWithClient(mockClient, iceberg.Properties{})
@@ -2005,7 +2005,7 @@ func TestCreateView_Success(t *testing.T) {
 
 	mockClient := &mockHiveClient{}
 	mockClient.On("GetDatabase", mock.Anything, "test_database").Return(&hive_metastore.Database{Name: "test_database"}, nil).Once()
-	mockClient.On("GetTable", mock.Anything, "test_database", "new_view").Return(nil, errNoSuchObject).Twice() // CheckViewExists and CheckTableExists
+	mockClient.On("GetTable", mock.Anything, "test_database", "new_view").Return(nil, errNoSuchObject).Twice() // CheckViewExists and TableExists
 	mockClient.On("CreateTable", mock.Anything, mock.MatchedBy(func(tbl *hive_metastore.Table) bool {
 		return tbl != nil && tbl.TableType == TableTypeVirtualView &&
 			tbl.Parameters != nil && tbl.Parameters[TableTypeKey] == TableTypeIcebergView &&
@@ -2114,7 +2114,7 @@ func TestTableOperationsRejectEmptyIdentifiers(t *testing.T) {
 		require.ErrorIs(t, err, catalog.ErrNoSuchTable)
 		_, err = cat.RenameTable(ctx, valid, ident)
 		require.ErrorIs(t, err, catalog.ErrNoSuchTable)
-		_, err = cat.CheckTableExists(ctx, ident)
+		_, err = cat.TableExists(ctx, ident)
 		require.ErrorIs(t, err, catalog.ErrNoSuchTable)
 	}
 }
