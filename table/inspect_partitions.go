@@ -90,7 +90,11 @@ func (idx *inspectPartitionAggregateIndex) lookupPartition(
 		return idx.tree.lookupPartition(partition, partitionType)
 	}
 
-	switch value := partition[idx.singleID].(type) {
+	return idx.lookupSingle(partition[idx.singleID])
+}
+
+func (idx *inspectPartitionAggregateIndex) lookupSingle(value any) *inspectPartitionAggregate {
+	switch value := value.(type) {
 	case int32:
 		return idx.singleInt32[value]
 	case []byte:
@@ -107,7 +111,11 @@ func (idx *inspectPartitionAggregateIndex) insert(record partitionRecord, aggreg
 		return
 	}
 
-	switch value := record[0].(type) {
+	idx.insertSingle(record[0], aggregate)
+}
+
+func (idx *inspectPartitionAggregateIndex) insertSingle(value any, aggregate *inspectPartitionAggregate) {
+	switch value := value.(type) {
 	case int32:
 		if idx.singleInt32 == nil {
 			idx.singleInt32 = make(map[int32]*inspectPartitionAggregate)
