@@ -1297,9 +1297,7 @@ func (DayTransform) ToHumanStr(val any) string {
 		return "null"
 	}
 
-	tm := epochTM.AddDate(0, 0, int(days))
-
-	return tm.Format("2006-01-02")
+	return formatDayPartition(days)
 }
 
 func (t DayTransform) ToHumanStrType(_ Type, val any) string {
@@ -1395,10 +1393,7 @@ func (HourTransform) Apply(value Optional[Literal]) (out Optional[Literal]) {
 func (HourTransform) ToHumanStr(val any) string {
 	switch v := val.(type) {
 	case int32:
-		seconds := int64(v) * int64(time.Hour/time.Second)
-		tm := time.Unix(seconds, 0).UTC()
-
-		return tm.Format("2006-01-02-15")
+		return formatHourPartition(v)
 	default:
 		return "null"
 	}
