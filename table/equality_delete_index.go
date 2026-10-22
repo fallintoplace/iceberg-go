@@ -494,6 +494,12 @@ func buildEqualityDeleteIndex(
 	}
 
 	sortBySequence := func(entries []equalityDeleteIndexEntry) {
+		if sortMonotonicBySequence(entries, func(entry equalityDeleteIndexEntry) int64 {
+			return entry.entry.SequenceNum()
+		}) {
+			return
+		}
+
 		slices.SortStableFunc(entries, func(a, b equalityDeleteIndexEntry) int {
 			return cmp.Compare(a.entry.SequenceNum(), b.entry.SequenceNum())
 		})
