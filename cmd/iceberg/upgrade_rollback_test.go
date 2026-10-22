@@ -433,8 +433,8 @@ func (p *panicCatalog) RenameTable(context.Context, table.Identifier, table.Iden
 	panic("RenameTable must not be called")
 }
 
-func (p *panicCatalog) CheckTableExists(context.Context, table.Identifier) (bool, error) {
-	panic("CheckTableExists must not be called")
+func (p *panicCatalog) TableExists(context.Context, table.Identifier) (bool, error) {
+	panic("TableExists must not be called")
 }
 
 func (p *panicCatalog) ListNamespaces(context.Context, table.Identifier) ([]table.Identifier, error) {
@@ -449,8 +449,8 @@ func (p *panicCatalog) DropNamespace(context.Context, table.Identifier) error {
 	panic("DropNamespace must not be called")
 }
 
-func (p *panicCatalog) CheckNamespaceExists(context.Context, table.Identifier) (bool, error) {
-	panic("CheckNamespaceExists must not be called")
+func (p *panicCatalog) NamespaceExists(context.Context, table.Identifier) (bool, error) {
+	panic("NamespaceExists must not be called")
 }
 
 func (p *panicCatalog) LoadNamespaceProperties(context.Context, table.Identifier) (iceberg.Properties, error) {

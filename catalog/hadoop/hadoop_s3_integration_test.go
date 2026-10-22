@@ -87,7 +87,7 @@ func (s *HadoopS3IntegrationSuite) TestNamespaceTableRoundTrip() {
 
 	s.Require().NoError(s.cat.CreateNamespace(s.ctx, ns, nil))
 
-	exists, err := s.cat.CheckNamespaceExists(s.ctx, ns)
+	exists, err := s.cat.NamespaceExists(s.ctx, ns)
 	s.Require().NoError(err)
 	s.True(exists)
 
@@ -110,7 +110,7 @@ func (s *HadoopS3IntegrationSuite) TestNamespaceTableRoundTrip() {
 
 	s.Require().NoError(s.cat.DropTable(s.ctx, ident))
 
-	tableExists, err := s.cat.CheckTableExists(s.ctx, ident)
+	tableExists, err := s.cat.TableExists(s.ctx, ident)
 	s.Require().NoError(err)
 	s.False(tableExists)
 }
@@ -204,7 +204,7 @@ func (s *HadoopS3IntegrationSuite) TestPurgeTableRemovesTableRoot() {
 	_, err = statFS.Stat(tbl.Location())
 	s.ErrorIs(err, fs.ErrNotExist)
 
-	exists, err := s.cat.CheckTableExists(s.ctx, ident)
+	exists, err := s.cat.TableExists(s.ctx, ident)
 	s.Require().NoError(err)
 	s.False(exists)
 }

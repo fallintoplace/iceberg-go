@@ -156,7 +156,7 @@ func testCommitToDroppedTable(t *testing.T, cfg Config) {
 	_, err := txn.Commit(ctx)
 	assert.ErrorIs(t, err, catalog.ErrNoSuchTable)
 
-	exists, err := cat.CheckTableExists(ctx, ident)
+	exists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.False(t, exists, "a commit to a dropped table must not recreate it")
 }

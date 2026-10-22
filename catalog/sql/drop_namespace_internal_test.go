@@ -228,7 +228,7 @@ func TestDropNamespaceDoesNotRaceWithObjectCreation(t *testing.T) {
 				return err
 			},
 			exists: func(ctx context.Context, cat *Catalog, ident table.Identifier) (bool, error) {
-				return cat.CheckTableExists(ctx, ident)
+				return cat.TableExists(ctx, ident)
 			},
 		},
 		{
@@ -251,7 +251,7 @@ func TestDropNamespaceDoesNotRaceWithObjectCreation(t *testing.T) {
 				return err
 			},
 			exists: func(ctx context.Context, cat *Catalog, ident table.Identifier) (bool, error) {
-				return cat.CheckTableExists(ctx, ident)
+				return cat.TableExists(ctx, ident)
 			},
 		},
 	}
@@ -309,7 +309,7 @@ func TestDropNamespaceDoesNotRaceWithObjectCreation(t *testing.T) {
 
 			objectExists, err := tt.exists(context.Background(), cat, objectID)
 			require.NoError(t, err)
-			namespaceExists, err := cat.CheckNamespaceExists(context.Background(), namespace)
+			namespaceExists, err := cat.NamespaceExists(context.Background(), namespace)
 			require.NoError(t, err)
 
 			switch {
@@ -378,7 +378,7 @@ func TestDropNamespaceDoesNotRaceWithUpdateNamespaceProperties(t *testing.T) {
 		t.Fatal("property update did not finish after namespace drop")
 	}
 
-	exists, err := cat.CheckNamespaceExists(context.Background(), namespace)
+	exists, err := cat.NamespaceExists(context.Background(), namespace)
 	require.NoError(t, err)
 	require.False(t, exists)
 }

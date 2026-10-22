@@ -969,7 +969,7 @@ func (s *SqliteCatalogTestSuite) TestMetricsReporterWiring() {
 
 		// The row must not have been inserted, so the failure is a clean no-op
 		// and the caller can retry rather than hit ErrTableAlreadyExists.
-		exists, err := cat.CheckTableExists(ctx, tblID)
+		exists, err := cat.TableExists(ctx, tblID)
 		s.Require().NoError(err)
 		s.False(exists)
 	})
@@ -1115,7 +1115,7 @@ func (s *SqliteCatalogTestSuite) TestTableOperationsRejectEmptyIdentifiers() {
 			s.ErrorIs(err, catalog.ErrNoSuchTable)
 			_, err = cat.RenameTable(ctx, valid, ident)
 			s.ErrorIs(err, catalog.ErrNoSuchTable)
-			_, err = cat.CheckTableExists(ctx, ident)
+			_, err = cat.TableExists(ctx, ident)
 			s.ErrorIs(err, catalog.ErrNoSuchTable)
 		}
 	}
@@ -1347,7 +1347,7 @@ func (s *SqliteCatalogTestSuite) TestLegacyNamespaceEncodingPrefixRemainsReadabl
 	s.Contains(namespaces, table.Identifier{legacyName})
 
 	legacyIdent := table.Identifier{legacyName}
-	exists, err := cat.CheckNamespaceExists(ctx, legacyIdent)
+	exists, err := cat.NamespaceExists(ctx, legacyIdent)
 	s.Require().NoError(err)
 	s.True(exists)
 	children, err := cat.ListNamespaces(ctx, legacyIdent)
@@ -1887,7 +1887,7 @@ func (s *SqliteCatalogTestSuite) TestDropNamespaceRejectsViewOnlyNamespace() {
 	s.ErrorIs(err, catalog.ErrNamespaceNotEmpty)
 	s.ErrorContains(err, "catalog objects exist")
 
-	exists, err := cat.CheckNamespaceExists(ctx, namespace)
+	exists, err := cat.NamespaceExists(ctx, namespace)
 	s.Require().NoError(err)
 	s.True(exists)
 	exists, err = cat.CheckViewExists(ctx, viewID)
@@ -2286,7 +2286,7 @@ func (s *SqliteCatalogTestSuite) TestCreateNamespaceSucceedsThroughSavepoint() {
 	s.True(drv.insertAttempted.Load(), "the emulated insert must have run")
 
 	// The row must survive RELEASE SAVEPOINT; a ROLLBACK there would persist none.
-	exists, err := cat.CheckNamespaceExists(ctx, namespace)
+	exists, err := cat.NamespaceExists(ctx, namespace)
 	s.Require().NoError(err)
 	s.True(exists, "the namespace must persist through the savepoint commit")
 }
@@ -2338,7 +2338,7 @@ func (s *SqliteCatalogTestSuite) TestCreateNamespaceRejectsReservedProperty() {
 		_, err = tt.cat.UpdateNamespaceProperties(ctx, tt.namespace, nil, iceberg.Properties{"exists": "false"})
 		s.ErrorIs(err, iceberg.ErrInvalidArgument)
 
-		exists, err := tt.cat.CheckNamespaceExists(ctx, tt.namespace)
+		exists, err := tt.cat.NamespaceExists(ctx, tt.namespace)
 		s.Require().NoError(err)
 		s.False(exists)
 	}
@@ -2404,7 +2404,7 @@ func (s *SqliteCatalogTestSuite) TestNamespacePropertiesCannotUpdateSentinel() {
 				s.Equal(tt.expectedProps, props)
 			}
 
-			exists, err := tt.cat.CheckNamespaceExists(ctx, tt.namespace)
+			exists, err := tt.cat.NamespaceExists(ctx, tt.namespace)
 			s.Require().NoError(err)
 			s.True(exists)
 		})

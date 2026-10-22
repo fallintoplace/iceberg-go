@@ -628,7 +628,7 @@ func (c *Catalog) LoadTable(ctx context.Context, ident table.Identifier) (*table
 	return tbl, err
 }
 
-func (c *Catalog) CheckTableExists(_ context.Context, ident table.Identifier) (bool, error) {
+func (c *Catalog) TableExists(_ context.Context, ident table.Identifier) (bool, error) {
 	if err := validateTableIdentifier(ident); err != nil {
 		return false, err
 	}
@@ -1000,7 +1000,7 @@ func (c *Catalog) DropNamespace(_ context.Context, ns table.Identifier) error {
 	return c.filesystem.Remove(path)
 }
 
-func (c *Catalog) CheckNamespaceExists(_ context.Context, ns table.Identifier) (bool, error) {
+func (c *Catalog) NamespaceExists(_ context.Context, ns table.Identifier) (bool, error) {
 	if err := validateIdentifier(ns); err != nil {
 		return false, err
 	}

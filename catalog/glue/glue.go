@@ -680,7 +680,7 @@ func (c *Catalog) RenameTable(ctx context.Context, from, to table.Identifier) (*
 		return nil, err
 	}
 
-	exists, err := c.CheckNamespaceExists(ctx, DatabaseIdentifier(toDatabase))
+	exists, err := c.NamespaceExists(ctx, DatabaseIdentifier(toDatabase))
 	if err != nil {
 		return nil, err
 	}
@@ -833,8 +833,8 @@ func (c *Catalog) restoreClaimedRename(ctx context.Context, fromDatabase, fromTa
 	return nil
 }
 
-// CheckTableExists returns if an Iceberg table exists in the Glue catalog.
-func (c *Catalog) CheckTableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
+// TableExists returns if an Iceberg table exists in the Glue catalog.
+func (c *Catalog) TableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
 	database, tableName, err := identifierToGlueTable(identifier)
 	if err != nil {
 		return false, err
@@ -874,7 +874,7 @@ func (c *Catalog) CreateNamespace(ctx context.Context, namespace table.Identifie
 	return nil
 }
 
-func (c *Catalog) CheckNamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
+func (c *Catalog) NamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
 	databaseName, err := identifierToGlueDatabase(namespace)
 	if err != nil {
 		return false, err

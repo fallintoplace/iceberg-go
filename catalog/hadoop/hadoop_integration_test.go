@@ -287,18 +287,18 @@ func (s *HadoopIntegrationSuite) TestGoCreateSparkSelect() {
 	s.Contains(output, "value")
 }
 
-// TestGoCheckTableExistsForSparkTable verifies that CheckTableExists
+// TestGoTableExistsForSparkTable verifies that TableExists
 // returns true for a table created by Spark.
-func (s *HadoopIntegrationSuite) TestGoCheckTableExistsForSparkTable() {
+func (s *HadoopIntegrationSuite) TestGoTableExistsForSparkTable() {
 	// Spark creates both namespace and table — Go only checks existence.
 	s.sparkSQL("CREATE NAMESPACE IF NOT EXISTS hadoop_test.exists_ns")
 	s.sparkSQL("CREATE TABLE hadoop_test.exists_ns.spark_exists_table (x INT) USING iceberg")
 
-	exists, err := s.cat.CheckTableExists(s.ctx, []string{"exists_ns", "spark_exists_table"})
+	exists, err := s.cat.TableExists(s.ctx, []string{"exists_ns", "spark_exists_table"})
 	s.Require().NoError(err)
 	s.True(exists)
 
-	exists, err = s.cat.CheckTableExists(s.ctx, []string{"exists_ns", "no_such_table"})
+	exists, err = s.cat.TableExists(s.ctx, []string{"exists_ns", "no_such_table"})
 	s.Require().NoError(err)
 	s.False(exists)
 }

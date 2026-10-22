@@ -112,11 +112,10 @@ func NewCreateViewCfg() CreateViewCfg {
 	}
 }
 
-// Catalog for iceberg table operations like create, drop, load, list and others.
-type Catalog interface {
-	// CatalogType returns the type of the catalog.
-	CatalogType() Type
-
+// TableCatalog defines table operations that can be used independently of
+// namespace management. Functions working only with tables should accept
+// this narrower interface rather than the full Catalog.
+type TableCatalog interface {
 	// CreateTable creates a new iceberg table in the catalog using the provided identifier
 	// and schema. Options can be used to optionally provide location, partition spec, sort order,
 	// and custom properties.
@@ -133,8 +132,14 @@ type Catalog interface {
 	// RenameTable tells the catalog to rename a given table by the identifiers
 	// provided, and then loads and returns the destination table
 	RenameTable(ctx context.Context, from, to table.Identifier) (*table.Table, error)
-	// CheckTableExists reports whether the table exists.
-	CheckTableExists(ctx context.Context, identifier table.Identifier) (bool, error)
+	// TableExists reports whether the table exists.
+	TableExists(ctx context.Context, identifier table.Identifier) (bool, error)
+}
+
+// NamespaceCatalog defines namespace operations without requiring table
+// management capabilities. Catalog implementations may expose this interface
+// to consumers that only manage namespaces.
+type NamespaceCatalog interface {
 	// ListNamespaces returns the list of available namespaces, optionally filtering by a
 	// parent namespace
 	ListNamespaces(ctx context.Context, parent table.Identifier) ([]table.Identifier, error)
@@ -142,14 +147,24 @@ type Catalog interface {
 	CreateNamespace(ctx context.Context, namespace table.Identifier, props iceberg.Properties) error
 	// DropNamespace tells the catalog to drop the namespace and all tables in that namespace
 	DropNamespace(ctx context.Context, namespace table.Identifier) error
-	// CheckNamespaceExists returns if the namespace exists
-	CheckNamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error)
+	// NamespaceExists returns if the namespace exists
+	NamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error)
 	// LoadNamespaceProperties returns the current properties in the catalog for
 	// a given namespace
 	LoadNamespaceProperties(ctx context.Context, namespace table.Identifier) (iceberg.Properties, error)
 	// UpdateNamespaceProperties allows removing, adding, and/or updating properties of a namespace
 	UpdateNamespaceProperties(ctx context.Context, namespace table.Identifier,
 		removals []string, updates iceberg.Properties) (PropertiesUpdateSummary, error)
+}
+
+// Catalog combines table and namespace operations for a complete Iceberg
+// catalog. Implementations also expose their backend type.
+type Catalog interface {
+	TableCatalog
+	NamespaceCatalog
+
+	// CatalogType returns the type of the catalog.
+	CatalogType() Type
 }
 
 // TransactionalCatalog is an optional interface implemented by catalogs

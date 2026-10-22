@@ -1214,9 +1214,9 @@ func (c *Catalog) RenameTable(ctx context.Context, from, to table.Identifier) (*
 	return c.LoadTable(ctx, to)
 }
 
-// CheckTableExists reports whether the identifier has a table row in the
+// TableExists reports whether the identifier has a table row in the
 // catalog. It does not validate that the referenced metadata file is readable.
-func (c *Catalog) CheckTableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
+func (c *Catalog) TableExists(ctx context.Context, identifier table.Identifier) (bool, error) {
 	if err := catalog.ValidateTableIdentifier(identifier); err != nil {
 		return false, err
 	}
@@ -1620,7 +1620,7 @@ func (c *Catalog) UpdateNamespaceProperties(ctx context.Context, namespace table
 	return summary, err
 }
 
-func (c *Catalog) CheckNamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
+func (c *Catalog) NamespaceExists(ctx context.Context, namespace table.Identifier) (bool, error) {
 	_, exists, err := c.resolveNamespaceKey(ctx, namespace)
 
 	return exists, err

@@ -902,7 +902,7 @@ func (r *RestCatalogSuite) TestNamespaceOperationsRejectInvalidComponents() {
 		r.ErrorIs(err, catalog.ErrNoSuchNamespace)
 		_, err = cat.UpdateNamespaceProperties(context.Background(), namespace, nil, nil)
 		r.ErrorIs(err, catalog.ErrNoSuchNamespace)
-		_, err = cat.CheckNamespaceExists(context.Background(), namespace)
+		_, err = cat.NamespaceExists(context.Background(), namespace)
 		r.ErrorIs(err, catalog.ErrNoSuchNamespace)
 		_, err = cat.ListNamespaces(context.Background(), namespace)
 		r.ErrorIs(err, catalog.ErrNoSuchNamespace)
@@ -1040,7 +1040,7 @@ func (r *RestCatalogSuite) TestCreateNamespace200() {
 	r.Require().NoError(cat.CreateNamespace(context.Background(), catalog.ToIdentifier("leden"), nil))
 }
 
-func (r *RestCatalogSuite) TestCheckNamespaceExists204() {
+func (r *RestCatalogSuite) TestNamespaceExists204() {
 	r.mux.HandleFunc("/v1/namespaces/leden", func(w http.ResponseWriter, req *http.Request) {
 		if !r.Equal(http.MethodHead, req.Method) {
 			return
@@ -1054,12 +1054,12 @@ func (r *RestCatalogSuite) TestCheckNamespaceExists204() {
 	cat, err := rest.NewCatalog(context.Background(), "rest", r.srv.URL, rest.WithOAuthToken(TestToken))
 	r.Require().NoError(err)
 
-	exists, err := cat.CheckNamespaceExists(context.Background(), catalog.ToIdentifier("leden"))
+	exists, err := cat.NamespaceExists(context.Background(), catalog.ToIdentifier("leden"))
 	r.Require().NoError(err)
 	r.Require().True(exists)
 }
 
-func (r *RestCatalogSuite) TestCheckNamespaceExists404() {
+func (r *RestCatalogSuite) TestNamespaceExists404() {
 	r.mux.HandleFunc("/v1/namespaces/noneexistent", func(w http.ResponseWriter, req *http.Request) {
 		if !r.Equal(http.MethodHead, req.Method) {
 			return
@@ -1085,7 +1085,7 @@ func (r *RestCatalogSuite) TestCheckNamespaceExists404() {
 	cat, err := rest.NewCatalog(context.Background(), "rest", r.srv.URL, rest.WithOAuthToken(TestToken))
 	r.Require().NoError(err)
 
-	exists, err := cat.CheckNamespaceExists(context.Background(), catalog.ToIdentifier("noneexistent"))
+	exists, err := cat.NamespaceExists(context.Background(), catalog.ToIdentifier("noneexistent"))
 	r.Require().NoError(err)
 	r.False(exists)
 }
@@ -1552,7 +1552,7 @@ func TestServerVendedReporterImplIgnored(t *testing.T) {
 	assert.IsType(t, metrics.NopReporter{}, tbl.MetricsReporter())
 }
 
-func (r *RestCatalogSuite) TestCheckTableExists204() {
+func (r *RestCatalogSuite) TestTableExists204() {
 	r.mux.HandleFunc("/v1/namespaces/fokko/tables/fokko2", func(w http.ResponseWriter, req *http.Request) {
 		if !r.Equal(http.MethodHead, req.Method) {
 			return
@@ -1567,12 +1567,12 @@ func (r *RestCatalogSuite) TestCheckTableExists204() {
 	cat, err := rest.NewCatalog(context.Background(), "rest", r.srv.URL, rest.WithOAuthToken(TestToken))
 	r.Require().NoError(err)
 
-	exists, err := cat.CheckTableExists(context.Background(), catalog.ToIdentifier("fokko", "fokko2"))
+	exists, err := cat.TableExists(context.Background(), catalog.ToIdentifier("fokko", "fokko2"))
 	r.Require().NoError(err)
 	r.True(exists)
 }
 
-func (r *RestCatalogSuite) TestCheckTableExists404() {
+func (r *RestCatalogSuite) TestTableExists404() {
 	r.mux.HandleFunc("/v1/namespaces/fokko/tables/nonexistent", func(w http.ResponseWriter, req *http.Request) {
 		if !r.Equal(http.MethodHead, req.Method) {
 			return
@@ -1594,7 +1594,7 @@ func (r *RestCatalogSuite) TestCheckTableExists404() {
 	cat, err := rest.NewCatalog(context.Background(), "rest", r.srv.URL, rest.WithOAuthToken(TestToken))
 	r.Require().NoError(err)
 
-	exists, err := cat.CheckTableExists(context.Background(), catalog.ToIdentifier("fokko", "nonexistent"))
+	exists, err := cat.TableExists(context.Background(), catalog.ToIdentifier("fokko", "nonexistent"))
 	r.Require().NoError(err)
 	r.False(exists)
 }

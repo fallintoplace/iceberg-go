@@ -66,7 +66,7 @@ func (c *exampleCatalog) RenameTable(context.Context, table.Identifier, table.Id
 	return nil, nil
 }
 
-func (c *exampleCatalog) CheckTableExists(context.Context, table.Identifier) (bool, error) {
+func (c *exampleCatalog) TableExists(context.Context, table.Identifier) (bool, error) {
 	return false, nil
 }
 
@@ -80,7 +80,7 @@ func (c *exampleCatalog) CreateNamespace(context.Context, table.Identifier, iceb
 
 func (c *exampleCatalog) DropNamespace(context.Context, table.Identifier) error { return nil }
 
-func (c *exampleCatalog) CheckNamespaceExists(context.Context, table.Identifier) (bool, error) {
+func (c *exampleCatalog) NamespaceExists(context.Context, table.Identifier) (bool, error) {
 	return false, nil
 }
 

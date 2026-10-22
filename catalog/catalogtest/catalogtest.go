@@ -157,7 +157,7 @@ func testBasicCreateTable(t *testing.T, cfg Config) {
 	cat := cfg.NewCatalog(t)
 	namespace, ident := newIdentifiers()
 
-	exists, err := cat.CheckTableExists(ctx, ident)
+	exists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.False(t, exists, "table should not exist before create")
 
@@ -168,7 +168,7 @@ func testBasicCreateTable(t *testing.T, cfg Config) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cat.DropTable(ctx, ident) })
 
-	exists, err = cat.CheckTableExists(ctx, ident)
+	exists, err = cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.True(t, exists, "table should exist after create")
 
@@ -190,7 +190,7 @@ func testBasicCreateTableThatAlreadyExists(t *testing.T, cfg Config) {
 	require.NoError(t, cat.CreateNamespace(ctx, namespace, nil))
 	t.Cleanup(func() { _ = cat.DropNamespace(ctx, namespace) })
 
-	exists, err := cat.CheckTableExists(ctx, ident)
+	exists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.False(t, exists, "table should not exist before create")
 
@@ -198,7 +198,7 @@ func testBasicCreateTableThatAlreadyExists(t *testing.T, cfg Config) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cat.DropTable(ctx, ident) })
 
-	exists, err = cat.CheckTableExists(ctx, ident)
+	exists, err = cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.True(t, exists, "table should exist after create")
 
@@ -220,7 +220,7 @@ func testLoadMissingTable(t *testing.T, cfg Config) {
 	require.NoError(t, cat.CreateNamespace(ctx, namespace, nil))
 	t.Cleanup(func() { _ = cat.DropNamespace(ctx, namespace) })
 
-	exists, err := cat.CheckTableExists(ctx, ident)
+	exists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.False(t, exists, "table should not exist")
 
@@ -235,7 +235,7 @@ func testLoadTableWithNonExistingNamespace(t *testing.T, cfg Config) {
 	cat := cfg.NewCatalog(t)
 	_, ident := newIdentifiers()
 
-	exists, err := cat.CheckTableExists(ctx, ident)
+	exists, err := cat.TableExists(ctx, ident)
 	require.NoError(t, err)
 	assert.False(t, exists, "table should not exist")
 
