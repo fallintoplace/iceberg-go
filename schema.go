@@ -441,39 +441,49 @@ type Void = struct{}
 
 var void = Void{}
 
-// Select creates a new schema with just the fields identified by name
-// passed in the order they are provided. If caseSensitive is false,
-// then fields will be identified by case insensitive search.
+// Select creates a new schema with the named fields, using case-sensitive
+// lookup. The field names are preserved from the original schema.
+// Use SelectCaseInsensitive to match names regardless of case.
 //
 // An error is returned if a requested name cannot be found.
-func (s *Schema) Select(caseSensitive bool, names ...string) (*Schema, error) {
-	ids := make(map[int]Void)
+func (s *Schema) Select(names ...string) (*Schema, error) {
+	return s.selectColumns(true, names)
+}
+
+// SelectCaseInsensitive creates a new schema with the named fields using
+// case-insensitive lookup. The original field names are preserved.
+//
+// An error is returned if a requested name cannot be found.
+func (s *Schema) SelectCaseInsensitive(names ...string) (*Schema, error) {
+	return s.selectColumns(false, names)
+}
+
+func (s *Schema) selectColumns(caseSensitive bool, names []string) (*Schema, error) {
+	var (
+		nameMap map[string]int
+		err     error
+	)
 	if caseSensitive {
-		nameMap, err := s.lazyNameToID()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, n := range names {
-			id, ok := nameMap[n]
-			if !ok {
-				return nil, fmt.Errorf("%w: could not find column %s", ErrInvalidSchema, n)
-			}
-			ids[id] = void
-		}
+		nameMap, err = s.lazyNameToID()
 	} else {
-		nameMap, err := s.lazyNameToIDLower()
-		if err != nil {
-			return nil, err
+		nameMap, err = s.lazyNameToIDLower()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make(map[int]Void, len(names))
+	for _, name := range names {
+		lookupName := name
+		if !caseSensitive {
+			lookupName = strings.ToLower(name)
 		}
 
-		for _, n := range names {
-			id, ok := nameMap[strings.ToLower(n)]
-			if !ok {
-				return nil, fmt.Errorf("%w: could not find column %s", ErrInvalidSchema, n)
-			}
-			ids[id] = void
+		id, ok := nameMap[lookupName]
+		if !ok {
+			return nil, fmt.Errorf("%w: could not find column %s", ErrInvalidSchema, name)
 		}
+		ids[id] = void
 	}
 
 	return PruneColumns(s, ids, true)

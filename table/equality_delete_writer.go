@@ -49,7 +49,7 @@ func equalityDeleteSchema(tableSchema *iceberg.Schema, fieldIDs []int) (*iceberg
 		names = append(names, name)
 	}
 
-	return tableSchema.Select(true, names...)
+	return tableSchema.Select(names...)
 }
 
 // WriteEqualityDeletes writes Arrow record batches as equality delete
@@ -245,5 +245,5 @@ func equalityDeleteWriteSchema(tableSchema *iceberg.Schema, equalityFieldIDs []i
 		names = append(names, name)
 	}
 
-	return tableSchema.Select(true, names...)
+	return tableSchema.Select(names...)
 }
