@@ -36,7 +36,7 @@ func (r registry) getKeys() []string {
 	regMutex.Lock()
 	defer regMutex.Unlock()
 
-	return slices.Collect(maps.Keys(r))
+	return slices.Sorted(maps.Keys(r))
 }
 
 func (r registry) set(catalogType string, reg Registrar) {
@@ -89,8 +89,8 @@ func Unregister(catalogType string) {
 	defaultRegistry.remove(strings.ToLower(catalogType))
 }
 
-// GetRegisteredCatalogs returns the list of registered catalog names that can
-// be looked up via LoadCatalog.
+// GetRegisteredCatalogs returns registered catalog types in sorted order.
+// These types can be used with Load.
 func GetRegisteredCatalogs() []string {
 	return defaultRegistry.getKeys()
 }
