@@ -58,6 +58,75 @@ func newInspectPartitionAggregateTree() *inspectPartitionAggregateTree {
 	return &inspectPartitionAggregateTree{}
 }
 
+// inspectPartitionAggregateIndex avoids a heap-allocated trie leaf for every
+// distinct single-field partition. Integer partition fields are particularly
+// common for bucket and identity transforms; binary values retain the tree's
+// byte-content equality. Multiple fields keep the existing trie semantics.
+type inspectPartitionAggregateIndex struct {
+	tree         *inspectPartitionAggregateTree
+	singleInt32  map[int32]*inspectPartitionAggregate
+	singleBinary map[string]*inspectPartitionAggregate
+	singleOther  map[any]*inspectPartitionAggregate
+	singleID     int
+	singleField  bool
+}
+
+func newInspectPartitionAggregateIndex(partitionType *iceberg.StructType) *inspectPartitionAggregateIndex {
+	if len(partitionType.FieldList) == 1 {
+		return &inspectPartitionAggregateIndex{
+			singleID:    partitionType.FieldList[0].ID,
+			singleField: true,
+		}
+	}
+
+	return &inspectPartitionAggregateIndex{tree: newInspectPartitionAggregateTree()}
+}
+
+func (idx *inspectPartitionAggregateIndex) lookupPartition(
+	partition map[int]any,
+	partitionType *iceberg.StructType,
+) *inspectPartitionAggregate {
+	if !idx.singleField {
+		return idx.tree.lookupPartition(partition, partitionType)
+	}
+
+	switch value := partition[idx.singleID].(type) {
+	case int32:
+		return idx.singleInt32[value]
+	case []byte:
+		return idx.singleBinary[string(value)]
+	default:
+		return idx.singleOther[comparablePartitionKey(value)]
+	}
+}
+
+func (idx *inspectPartitionAggregateIndex) insert(record partitionRecord, aggregate *inspectPartitionAggregate) {
+	if !idx.singleField {
+		idx.tree.insert(record, aggregate)
+
+		return
+	}
+
+	switch value := record[0].(type) {
+	case int32:
+		if idx.singleInt32 == nil {
+			idx.singleInt32 = make(map[int32]*inspectPartitionAggregate)
+		}
+		idx.singleInt32[value] = aggregate
+	case []byte:
+		if idx.singleBinary == nil {
+			idx.singleBinary = make(map[string]*inspectPartitionAggregate)
+		}
+		// String keys own their bytes, even when the source buffer is reused.
+		idx.singleBinary[string(value)] = aggregate
+	default:
+		if idx.singleOther == nil {
+			idx.singleOther = make(map[any]*inspectPartitionAggregate)
+		}
+		idx.singleOther[comparablePartitionKey(value)] = aggregate
+	}
+}
+
 // child uses a typed map for binary values to avoid interface-backed keys
 // during repeated lookups. Other values retain their existing key types.
 func (t *inspectPartitionAggregateTree) child(value any) (*inspectPartitionAggregateTree, bool) {
@@ -195,7 +264,7 @@ func (i InspectTable) partitionAggregates(ctx context.Context, partitionType *ic
 	}
 
 	aggregates := make([]*inspectPartitionAggregate, 0)
-	aggregateTree := newInspectPartitionAggregateTree()
+	aggregateIndex := newInspectPartitionAggregateIndex(partitionType)
 
 	// Buffer only a bounded number of manifests. Workers group their entries
 	// independently, then their results are merged in manifest order.
@@ -203,17 +272,17 @@ func (i InspectTable) partitionAggregates(ctx context.Context, partitionType *ic
 	processBatch := func(batch []iceberg.ManifestFile) error {
 		if len(batch) == 1 {
 			return i.foldInspectPartitionManifest(ctx, fs, batch[0], partitionType,
-				snapshotTimes, aggregateTree, &aggregates)
+				snapshotTimes, aggregateIndex, &aggregates)
 		}
 
 		partial := make([][]*inspectPartitionAggregate, len(batch))
 		g, gctx := errgroup.WithContext(ctx)
 		for index, manifest := range batch {
 			g.Go(func() error {
-				localTree := newInspectPartitionAggregateTree()
+				localIndex := newInspectPartitionAggregateIndex(partitionType)
 
 				return i.foldInspectPartitionManifest(gctx, fs, manifest, partitionType,
-					snapshotTimes, localTree, &partial[index])
+					snapshotTimes, localIndex, &partial[index])
 			})
 		}
 		if err := g.Wait(); err != nil {
@@ -231,10 +300,10 @@ func (i InspectTable) partitionAggregates(ctx context.Context, partitionType *ic
 					}
 				}
 				merged++
-				aggregate := aggregateTree.lookupPartition(local.partition, partitionType)
+				aggregate := aggregateIndex.lookupPartition(local.partition, partitionType)
 				if aggregate == nil {
 					aggregates = append(aggregates, local)
-					aggregateTree.insert(newPartitionRecord(local.partition, partitionType), local)
+					aggregateIndex.insert(newPartitionRecord(local.partition, partitionType), local)
 
 					continue
 				}
@@ -274,15 +343,15 @@ func (i InspectTable) partitionAggregates(ctx context.Context, partitionType *ic
 	return result, nil
 }
 
-// foldInspectPartitionManifest performs the original partition accounting using
-// a caller-owned tree. Each concurrent worker owns its own tree and result slice.
+// foldInspectPartitionManifest performs the partition accounting using a
+// caller-owned index. Each concurrent worker owns its index and result slice.
 func (i InspectTable) foldInspectPartitionManifest(
 	ctx context.Context,
 	fs iceio.IO,
 	manifest iceberg.ManifestFile,
 	partitionType *iceberg.StructType,
 	snapshotTimes map[int64]int64,
-	aggregateTree *inspectPartitionAggregateTree,
+	aggregateIndex *inspectPartitionAggregateIndex,
 	aggregates *[]*inspectPartitionAggregate,
 ) error {
 	// Avoid opening remote manifest files after the caller has canceled.
@@ -304,7 +373,7 @@ func (i InspectTable) foldInspectPartitionManifest(
 
 		file := entry.DataFile()
 		partitionValues := dataFilePartition(file)
-		aggregate := aggregateTree.lookupPartition(partitionValues, partitionType)
+		aggregate := aggregateIndex.lookupPartition(partitionValues, partitionType)
 		if aggregate == nil {
 			partition := inspectCoercePartition(partitionValues, partitionType)
 			record := newPartitionRecord(partition, partitionType)
@@ -313,7 +382,7 @@ func (i InspectTable) foldInspectPartitionManifest(
 				orderingKey: inspectPartitionKey(partition),
 			}
 			*aggregates = append(*aggregates, aggregate)
-			aggregateTree.insert(record, aggregate)
+			aggregateIndex.insert(record, aggregate)
 		}
 
 		switch file.ContentType() {
