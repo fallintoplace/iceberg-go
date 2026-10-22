@@ -1138,7 +1138,7 @@ func TestSanitizeColumnNamesEmptyFieldName(t *testing.T) {
 }
 
 func TestSchemaSelectCaseSensitiveSuccess(t *testing.T) {
-	selected, err := tableSchemaSimple.Select(true, "foo", "bar")
+	selected, err := tableSchemaSimple.Select("foo", "bar")
 	require.NoError(t, err)
 
 	expected := iceberg.NewSchemaWithIdentifiers(1, []int{2},
@@ -1149,14 +1149,14 @@ func TestSchemaSelectCaseSensitiveSuccess(t *testing.T) {
 }
 
 func TestSchemaSelectCaseSensitiveNameMismatch(t *testing.T) {
-	_, err := tableSchemaSimple.Select(true, "FOO")
+	_, err := tableSchemaSimple.Select("FOO")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, iceberg.ErrInvalidSchema)
 	assert.ErrorContains(t, err, "could not find column FOO")
 }
 
 func TestSchemaSelectCaseInsensitiveSuccess(t *testing.T) {
-	selected, err := tableSchemaSimple.Select(false, "FOO", "BaR")
+	selected, err := tableSchemaSimple.SelectCaseInsensitive("FOO", "BaR")
 	require.NoError(t, err)
 
 	expected := iceberg.NewSchemaWithIdentifiers(1, []int{2},
@@ -1167,10 +1167,26 @@ func TestSchemaSelectCaseInsensitiveSuccess(t *testing.T) {
 }
 
 func TestSchemaSelectCaseInsensitiveMissingColumn(t *testing.T) {
-	_, err := tableSchemaSimple.Select(false, "missing_col")
+	_, err := tableSchemaSimple.SelectCaseInsensitive("missing_col")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, iceberg.ErrInvalidSchema)
 	assert.ErrorContains(t, err, "could not find column missing_col")
+}
+
+func TestSchemaSelectCaseInsensitiveNestedField(t *testing.T) {
+	schema := iceberg.NewSchema(1, iceberg.NestedField{
+		ID: 1, Name: "Parent",
+		Type: &iceberg.StructType{FieldList: []iceberg.NestedField{
+			{ID: 2, Name: "Child", Type: iceberg.PrimitiveTypes.String},
+		}},
+	})
+
+	selected, err := schema.SelectCaseInsensitive("PARENT.CHILD")
+	require.NoError(t, err)
+
+	field, ok := selected.FindFieldByName("Parent.Child")
+	require.True(t, ok)
+	assert.Equal(t, 2, field.ID)
 }
 
 func TestSchemaWithGeometryGeographyTypes(t *testing.T) {

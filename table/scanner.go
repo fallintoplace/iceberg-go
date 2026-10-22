@@ -303,7 +303,11 @@ func (scan *Scan) Projection() (*iceberg.Schema, error) {
 		}
 
 		var err error
-		schema, err = curSchema.Select(scan.caseSensitive, userFields...)
+		if scan.caseSensitive {
+			schema, err = curSchema.Select(userFields...)
+		} else {
+			schema, err = curSchema.SelectCaseInsensitive(userFields...)
+		}
 		if err != nil {
 			return nil, err
 		}
