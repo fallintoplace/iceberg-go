@@ -112,6 +112,12 @@ func buildPositionalDeleteIndex(entries []iceberg.ManifestEntry) (*positionalDel
 	}
 
 	sortBySequence := func(entries []iceberg.ManifestEntry) {
+		if sortMonotonicBySequence(entries, func(entry iceberg.ManifestEntry) int64 {
+			return entry.SequenceNum()
+		}) {
+			return
+		}
+
 		slices.SortStableFunc(entries, func(a, b iceberg.ManifestEntry) int {
 			return cmp.Compare(a.SequenceNum(), b.SequenceNum())
 		})
