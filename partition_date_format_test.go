@@ -76,10 +76,10 @@ var dayHourFormatBenchmarkSink string
 
 func BenchmarkDayHourPartitionFormatting(b *testing.B) {
 	for _, tc := range []struct {
-		name       string
-		values     []int32
-		reference  func(int32) string
-		optimized  func(int32) string
+		name		string
+		values		[]int32
+		reference	func(int32) string
+		optimized	func(int32) string
 	}{
 		{
 			"day/recent",
