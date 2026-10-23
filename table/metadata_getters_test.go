@@ -156,7 +156,8 @@ func TestMetadataGettersReturnDefensiveCopies(t *testing.T) {
 	*encryptionKeys[0].EncryptedByID = "mutated"
 	encryptionKeys[0].Properties["scope"] = "mutated"
 
-	refs := metadata.Ref()
+	refs := metadata.Ref(MainBranch)
+	require.NotNil(t, refs)
 	*refs.MinSnapshotsToKeep = 99
 	for _, ref := range metadata.Refs() {
 		*ref.MaxSnapshotAgeMs = 99
@@ -176,6 +177,42 @@ func TestMetadataGettersReturnDefensiveCopies(t *testing.T) {
 	got, err := json.Marshal(metadata)
 	require.NoError(t, err)
 	require.JSONEq(t, string(original), string(got))
+}
+
+// Ref follows Java's name-based lookup and distinguishes a missing ref
+// from a zero-valued ref. Returned refs do not alias stored metadata.
+func TestMetadataRefByName(t *testing.T) {
+	retention := int64(1234)
+	metadata := commonMetadata{SnapshotRefs: map[string]SnapshotRef{
+		"feature": {
+			SnapshotID:      12,
+			SnapshotRefType: BranchRef,
+			MaxRefAgeMs:     &retention,
+		},
+		"release": {
+			SnapshotID:      13,
+			SnapshotRefType: TagRef,
+		},
+	}}
+
+	require.Nil(t, metadata.Ref(MainBranch))
+	require.Nil(t, metadata.Ref("missing"))
+
+	feature := metadata.Ref("feature")
+	require.NotNil(t, feature)
+	require.Equal(t, int64(12), feature.SnapshotID)
+	require.Equal(t, BranchRef, feature.SnapshotRefType)
+	*feature.MaxRefAgeMs = 9999
+	feature.SnapshotID = 55
+
+	require.Equal(t, int64(12), metadata.SnapshotRefs["feature"].SnapshotID)
+	require.Equal(t, int64(1234), retention)
+
+	release := metadata.Ref("release")
+	require.NotNil(t, release)
+	require.Equal(t, int64(13), release.SnapshotID)
+	require.Equal(t, TagRef, release.SnapshotRefType)
+	require.Nil(t, (commonMetadata{}).Ref(MainBranch))
 }
 
 func TestMetadataSchemaGetterCopiesNestedValues(t *testing.T) {
