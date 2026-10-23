@@ -92,7 +92,7 @@ func TestChainedUpdateSpecCommitsToCatalog(t *testing.T) {
 		tbl := newRetryTestTable(t, cat, nil)
 		cat.metadata = tbl.Metadata()
 
-		baseLastPartitionID := tbl.Metadata().LastPartitionSpecID()
+		baseLastPartitionID := tbl.Metadata().LastAssignedPartitionID()
 		require.NotNil(t, baseLastPartitionID)
 
 		txn := tbl.NewTransaction()
