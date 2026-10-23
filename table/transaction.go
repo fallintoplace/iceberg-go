@@ -503,7 +503,7 @@ func (t *Transaction) AssertDefaultShape() error {
 
 	return t.apply(nil, []Requirement{
 		AssertDefaultSpecID(meta.DefaultPartitionSpec()),
-		AssertDefaultSortOrderID(meta.DefaultSortOrder()),
+		AssertDefaultSortOrderID(meta.DefaultSortOrderID()),
 	})
 }
 
@@ -615,7 +615,7 @@ func (t *Transaction) ReplaceSortOrder(order SortOrder) error {
 
 	return t.apply(
 		[]Update{NewAddSortOrderUpdate(&order), NewSetDefaultSortOrderUpdate(-1)},
-		[]Requirement{AssertDefaultSortOrderID(t.tbl.Metadata().DefaultSortOrder())},
+		[]Requirement{AssertDefaultSortOrderID(t.tbl.Metadata().DefaultSortOrderID())},
 	)
 }
 

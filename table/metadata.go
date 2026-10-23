@@ -371,9 +371,9 @@ type Metadata interface {
 	SortOrder() SortOrder
 	// SortOrders returns the list of sort orders in the table.
 	SortOrders() []SortOrder
-	// DefaultSortOrder returns the ID of the current sort order that writerFactory
+	// DefaultSortOrderID returns the ID of the current sort order that writerFactory
 	// should use by default.
-	DefaultSortOrder() int
+	DefaultSortOrderID() int
 	// Properties is a string to string map of table properties. This is used
 	// to control settings that affect reading and writing and is not intended
 	// to be used for arbitrary metadata. For example, commit.retry.num-retries
@@ -512,7 +512,7 @@ func MetadataBuilderFromBase(metadata Metadata, currentFileLocation string) (*Me
 
 		b.currentSchemaID = common.CurrentSchemaID
 		b.defaultSpecID = metadata.DefaultPartitionSpec()
-		b.defaultSortOrderID = metadata.DefaultSortOrder()
+		b.defaultSortOrderID = metadata.DefaultSortOrderID()
 		b.schemaList = cloneSchemas(common.SchemaList)
 		b.specs = clonePartitionSpecs(common.Specs)
 		b.lastPartitionID = clonePtr(common.LastPartitionID)
@@ -567,7 +567,7 @@ func MetadataBuilderFromBase(metadata Metadata, currentFileLocation string) (*Me
 		b.snapshotList = slices.Clone(metadata.Snapshots())
 		b.snapshotIndex = buildSnapshotIndex(b.snapshotList)
 		b.sortOrderList = slices.Clone(metadata.SortOrders())
-		b.defaultSortOrderID = metadata.DefaultSortOrder()
+		b.defaultSortOrderID = metadata.DefaultSortOrderID()
 		if metadata.Version() > 1 {
 			seq := metadata.LastSequenceNumber()
 			b.lastSequenceNumber = &seq
@@ -2697,10 +2697,6 @@ func (c *commonMetadata) SortOrder() SortOrder {
 	return cloneSortOrder(UnsortedSortOrder)
 }
 
-func (c *commonMetadata) DefaultSortOrder() int {
-	return c.DefaultSortOrderID
-}
-
 func (c *commonMetadata) Properties() iceberg.Properties {
 	if c.Props == nil {
 		return iceberg.Properties{}
@@ -3200,10 +3196,12 @@ func initMetadataV1Deser() *metadataV1 {
 	meta := metadataV1{
 		commonMetadata: initCommonMetadataForDeserialization(),
 	}
-	meta.DefaultSortOrderID = 0
+	meta.commonMetadata.DefaultSortOrderID = 0
 
 	return &meta
 }
+
+func (m *metadataV1) DefaultSortOrderID() int { return m.commonMetadata.DefaultSortOrderID }
 
 func (m *metadataV1) LastSequenceNumber() int64 { return 0 }
 func (m *metadataV1) NextRowID() int64          { return 0 } // V1 doesn't support row lineage
@@ -3350,6 +3348,8 @@ func initMetadataV2Deser() *metadataV2 {
 	}
 }
 
+func (m *metadataV2) DefaultSortOrderID() int { return m.commonMetadata.DefaultSortOrderID }
+
 func (m *metadataV2) LastSequenceNumber() int64 { return m.LastSeqNum }
 func (m *metadataV2) NextRowID() int64          { return 0 } // V2 doesn't support row lineage
 
@@ -3449,6 +3449,8 @@ func initMetadataV3Deser() *metadataV3 {
 		commonMetadata: initCommonMetadataForDeserialization(),
 	}
 }
+
+func (m *metadataV3) DefaultSortOrderID() int { return m.commonMetadata.DefaultSortOrderID }
 
 func (m *metadataV3) LastSequenceNumber() int64 { return m.LastSeqNum }
 func (m *metadataV3) NextRowID() int64 {
