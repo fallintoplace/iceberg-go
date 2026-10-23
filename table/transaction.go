@@ -3516,11 +3516,12 @@ func (t *Transaction) Scan(opts ...ScanOption) (*Scan, error) {
 	}
 
 	s := &Scan{
-		identifier:       slices.Clone(t.tbl.identifier),
-		metadata:         updatedMeta,
-		metadataLocation: t.tbl.metadataLocation,
-		ioF:              t.tbl.fsF,
-		manifestCache:    newSnapshotManifestCacheForMetadata(updatedMeta),
+		identifier:           slices.Clone(t.tbl.identifier),
+		metadata:             updatedMeta,
+		metadataLocation:     t.tbl.metadataLocation,
+		ioF:                  t.tbl.fsF,
+		manifestCache:        newSnapshotManifestCacheForMetadata(updatedMeta),
+		manifestContentCache: t.tbl.manifestContentCache,
 		// Catalog planners can only see committed table state, not metadata
 		// staged inside this transaction. Keep transaction scans local so auto
 		// mode cannot silently return stale tasks. The catalog's
@@ -3702,7 +3703,7 @@ func prepareBatchFilter(filter iceberg.BooleanExpression, schema *iceberg.Schema
 		}, nil
 	}
 
-	extSet, substraitFilter, err := substrait.ConvertExpr(schema, bound, caseSensitive)
+	extSet, substraitFilter, err := substrait.ConvertExpr(schema, bound)
 	if err != nil {
 		return nil, fmt.Errorf("prepareBatchFilter: convert expression: %w", err)
 	}
