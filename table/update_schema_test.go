@@ -52,7 +52,7 @@ var originalSchema = iceberg.NewSchema(1,
 var testMetadata, _ = NewMetadata(originalSchema, nil, UnsortedSortOrder, "", nil)
 
 func TestNewUpdateSchemaWithNilTransactionReturnsError(t *testing.T) {
-	err := NewUpdateSchema(nil, true, false).Commit()
+	err := NewUpdateSchema(nil).Commit()
 	require.ErrorIs(t, err, ErrInvalidMetadata)
 	assert.ErrorContains(t, err, "transaction is nil")
 }
@@ -62,7 +62,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"gender"}, iceberg.PrimitiveTypes.String, "", false, iceberg.StringLiteral("male")).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"gender"}, iceberg.PrimitiveTypes.String, "", false, iceberg.StringLiteral("male")).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -104,7 +104,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"files"}, &iceberg.ListType{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"files"}, &iceberg.ListType{
 			Element:         iceberg.PrimitiveTypes.String,
 			ElementRequired: false,
 		}, "", false, nil).Apply()
@@ -145,7 +145,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"files"}, &iceberg.MapType{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"files"}, &iceberg.MapType{
 			KeyType:       iceberg.PrimitiveTypes.String,
 			ValueType:     iceberg.PrimitiveTypes.String,
 			ValueRequired: false,
@@ -189,7 +189,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"files"}, &iceberg.StructType{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"files"}, &iceberg.StructType{
 			FieldList: []iceberg.NestedField{
 				{ID: 7, Name: "id", Type: iceberg.PrimitiveTypes.String, Required: false, Doc: ""},
 				{ID: 8, Name: "name", Type: iceberg.PrimitiveTypes.String, Required: false, Doc: ""},
@@ -233,7 +233,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"address", "code"}, iceberg.PrimitiveTypes.String, "", false, nil).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"address", "code"}, iceberg.PrimitiveTypes.String, "", false, nil).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -267,7 +267,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"address", "code"}, &iceberg.StructType{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"address", "code"}, &iceberg.StructType{
 			FieldList: []iceberg.NestedField{
 				{ID: 7, Name: "code-1", Type: iceberg.PrimitiveTypes.String, Required: false, Doc: ""},
 				{ID: 8, Name: "code-2", Type: iceberg.PrimitiveTypes.String, Required: false, Doc: ""},
@@ -311,7 +311,7 @@ func TestAddColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"address", "code"}, &iceberg.StructType{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"address", "code"}, &iceberg.StructType{
 			FieldList: []iceberg.NestedField{
 				{ID: 7, Name: "code-1", Type: iceberg.PrimitiveTypes.String, Required: false, Doc: ""},
 				{ID: 8, Name: "code-2", Type: iceberg.PrimitiveTypes.String, Required: false, Doc: ""},
@@ -372,7 +372,7 @@ func TestAddColumn(t *testing.T) {
 		geog, err := iceberg.GeographyTypeOf("srid:4269", "karney")
 		assert.NoError(t, err)
 
-		upd := NewUpdateSchema(txn, true, true).
+		upd := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			AddColumn([]string{"geom"}, iceberg.GeometryType{}, "", false, nil).
 			AddColumn([]string{"geog"}, geog, "", false, nil)
 		err = upd.Commit()
@@ -399,7 +399,7 @@ func TestAddColumn(t *testing.T) {
 		geog, err := iceberg.GeographyTypeOf("srid:4269", "karney")
 		assert.NoError(t, err)
 
-		upd := NewUpdateSchema(txn, true, true).
+		upd := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			AddColumn([]string{"geom"}, iceberg.GeometryType{}, "", false, nil).
 			AddColumn([]string{"geog"}, geog, "", false, nil)
 		err = upd.Commit()
@@ -507,7 +507,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).DeleteColumn([]string{"name"}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).DeleteColumn([]string{"name"}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -528,7 +528,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).DeleteColumn([]string{"address", "city"}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).DeleteColumn([]string{"address", "city"}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -545,7 +545,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).DeleteColumn([]string{"non_existent"}).Apply()
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).DeleteColumn([]string{"non_existent"}).Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "field not found")
 	})
@@ -554,7 +554,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			UpdateColumn([]string{"age"}, ColumnUpdate{
 				Doc: iceberg.Optional[string]{Valid: true, Val: "the age"},
 			}).
@@ -567,7 +567,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			UpdateColumn([]string{"address", "city"}, ColumnUpdate{
 				Doc: iceberg.Optional[string]{Valid: true, Val: "the city"},
 			}).
@@ -580,7 +580,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			UpdateColumn([]string{"address", "city"}, ColumnUpdate{
 				Doc: iceberg.Optional[string]{Valid: true, Val: "the city"},
 			}).
@@ -606,7 +606,7 @@ func TestDeleteColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			UpdateColumn([]string{"age"}, ColumnUpdate{
 				Doc: iceberg.Optional[string]{Valid: true, Val: "the age"},
 			}).
@@ -629,7 +629,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			FieldType: iceberg.Optional[iceberg.Type]{Valid: true, Val: iceberg.PrimitiveTypes.Int64},
 		}).Apply()
 		assert.NoError(t, err)
@@ -644,7 +644,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"name"}, ColumnUpdate{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"name"}, ColumnUpdate{
 			Required: iceberg.Optional[bool]{Valid: true, Val: true},
 		}).Apply()
 		assert.NoError(t, err)
@@ -659,7 +659,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			Doc: iceberg.Optional[string]{Valid: true, Val: "User's age in years"},
 		}).Apply()
 		assert.NoError(t, err)
@@ -674,7 +674,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			WriteDefault: iceberg.Optional[iceberg.Literal]{
 				Valid: true,
 				Val:   iceberg.NewLiteral(int32(7)),
@@ -688,7 +688,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			WriteDefault: iceberg.Optional[iceberg.Literal]{Valid: true, Val: iceberg.NewLiteral(int32(7))},
 		}).Apply()
 		require.NoError(t, err)
@@ -702,7 +702,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			WriteDefault: iceberg.Optional[iceberg.Literal]{Valid: true, Val: iceberg.NewLiteral("not-an-int")},
 		}).Apply()
 		require.ErrorContains(t, err, "invalid write-default for age")
@@ -714,7 +714,7 @@ func TestUpdateColumn(t *testing.T) {
 
 		// Promote age to Int64 in the same update;
 		// the write-default must match the promoted type, so an int32 literal is rejected.
-		_, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			FieldType:    iceberg.Optional[iceberg.Type]{Valid: true, Val: iceberg.PrimitiveTypes.Int64},
 			WriteDefault: iceberg.Optional[iceberg.Literal]{Valid: true, Val: iceberg.NewLiteral(int32(7))},
 		}).Apply()
@@ -722,7 +722,7 @@ func TestUpdateColumn(t *testing.T) {
 
 		// A default matching the promoted type is accepted.
 		txn = table.NewTransaction()
-		newSchema, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			FieldType:    iceberg.Optional[iceberg.Type]{Valid: true, Val: iceberg.PrimitiveTypes.Int64},
 			WriteDefault: iceberg.Optional[iceberg.Literal]{Valid: true, Val: iceberg.NewLiteral(int64(7))},
 		}).Apply()
@@ -736,7 +736,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"address"}, ColumnUpdate{
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"address"}, ColumnUpdate{
 			WriteDefault: iceberg.Optional[iceberg.Literal]{Valid: true, Val: iceberg.NewLiteral(int32(7))},
 		}).Apply()
 		require.ErrorContains(t, err, "invalid write-default for address")
@@ -746,7 +746,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"age"}, ColumnUpdate{
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"age"}, ColumnUpdate{
 			WriteDefault: iceberg.Optional[iceberg.Literal]{Valid: true, Val: nil},
 		}).Apply()
 		require.NoError(t, err)
@@ -760,7 +760,7 @@ func TestUpdateColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).UpdateColumn([]string{"non_existent"}, ColumnUpdate{
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).UpdateColumn([]string{"non_existent"}, ColumnUpdate{
 			Doc: iceberg.Optional[string]{Valid: true, Val: "test"},
 		}).Apply()
 		assert.Error(t, err)
@@ -773,7 +773,7 @@ func TestRenameColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).RenameColumn([]string{"name"}, "full_name").Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).RenameColumn([]string{"name"}, "full_name").Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -789,7 +789,7 @@ func TestRenameColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).RenameColumn([]string{"address", "city"}, "city_name").Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).RenameColumn([]string{"address", "city"}, "city_name").Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -811,7 +811,7 @@ func TestRenameColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).RenameColumn([]string{"name"}, "age").Apply()
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).RenameColumn([]string{"name"}, "age").Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "field already exists")
 	})
@@ -822,7 +822,7 @@ func TestMoveColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).MoveFirst([]string{"age"}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).MoveFirst([]string{"age"}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -835,7 +835,7 @@ func TestMoveColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).MoveBefore([]string{"age"}, []string{"name"}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).MoveBefore([]string{"age"}, []string{"name"}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -863,7 +863,7 @@ func TestMoveColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).MoveAfter([]string{"name"}, []string{"age"}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).MoveAfter([]string{"name"}, []string{"age"}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -891,7 +891,7 @@ func TestMoveColumn(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).MoveFirst([]string{"non_existent"}).Apply()
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).MoveFirst([]string{"non_existent"}).Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "field not found")
 	})
@@ -936,7 +936,7 @@ func TestMoveRelativeToDeletedColumnRejected(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tbl := New([]string{"id"}, testMetadata, "", nil, nil)
-			_, err := tt.build(NewUpdateSchema(tbl.NewTransaction(), true, true)).Apply()
+			_, err := tt.build(NewUpdateSchema(tbl.NewTransaction(), AllowIncompatibleSchemaChanges())).Apply()
 			require.ErrorContains(t, err, tt.wantErr)
 			require.ErrorContains(t, err, "name")
 		})
@@ -944,7 +944,7 @@ func TestMoveRelativeToDeletedColumnRejected(t *testing.T) {
 
 	t.Run("move then delete source", func(t *testing.T) {
 		tbl := New([]string{"id"}, testMetadata, "", nil, nil)
-		_, err := NewUpdateSchema(tbl.NewTransaction(), true, true).
+		_, err := NewUpdateSchema(tbl.NewTransaction(), AllowIncompatibleSchemaChanges()).
 			MoveBefore([]string{"age"}, []string{"name"}).
 			DeleteColumn([]string{"age"}).
 			Apply()
@@ -953,7 +953,7 @@ func TestMoveRelativeToDeletedColumnRejected(t *testing.T) {
 
 	t.Run("delete with unrelated move", func(t *testing.T) {
 		tbl := New([]string{"id"}, testMetadata, "", nil, nil)
-		updated, err := NewUpdateSchema(tbl.NewTransaction(), true, true).
+		updated, err := NewUpdateSchema(tbl.NewTransaction(), AllowIncompatibleSchemaChanges()).
 			DeleteColumn([]string{"name"}).
 			MoveBefore([]string{"age"}, []string{"id"}).
 			Apply()
@@ -968,7 +968,7 @@ func TestMoveRelativeToDeletedColumnRejected(t *testing.T) {
 
 	t.Run("nested move target cannot be deleted", func(t *testing.T) {
 		tbl := New([]string{"id"}, testMetadata, "", nil, nil)
-		_, err := NewUpdateSchema(tbl.NewTransaction(), true, true).
+		_, err := NewUpdateSchema(tbl.NewTransaction(), AllowIncompatibleSchemaChanges()).
 			MoveBefore([]string{"address", "zip"}, []string{"address", "city"}).
 			DeleteColumn([]string{"address", "city"}).
 			Apply()
@@ -981,7 +981,7 @@ func TestChainedOperations(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			AddColumn([]string{"email"}, iceberg.PrimitiveTypes.String, "Email address", false, nil).
 			RenameColumn([]string{"name"}, "full_name").
 			UpdateColumn([]string{"age"}, ColumnUpdate{
@@ -1019,7 +1019,7 @@ func TestSetIdentifierField(t *testing.T) {
 		txn := table.NewTransaction()
 
 		// Test that SetIdentifierField returns the same UpdateSchema instance
-		updateSchema := NewUpdateSchema(txn, true, true)
+		updateSchema := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges())
 		updatedSchema := updateSchema.SetIdentifierField([][]string{{"id"}})
 		assert.Equal(t, updateSchema, updatedSchema) // Should return the same instance
 
@@ -1038,7 +1038,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).SetIdentifierField([][]string{{"id"}, {"name"}}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{{"id"}, {"name"}}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -1052,7 +1052,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).SetIdentifierField([][]string{{"ID"}}).Apply()
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{{"ID"}}).Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "identifier field not found: ID")
 	})
@@ -1061,7 +1061,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, false, true).SetIdentifierField([][]string{{"ID"}}).Apply()
+		newSchema, err := NewUpdateSchema(txn, WithCaseInsensitiveSchemaMatching(), AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{{"ID"}}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -1074,7 +1074,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).SetIdentifierField([][]string{{"non_existent"}}).Apply()
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{{"non_existent"}}).Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "identifier field not found: non_existent")
 	})
@@ -1083,7 +1083,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).SetIdentifierField([][]string{}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -1095,7 +1095,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			AddColumn([]string{"email"}, iceberg.PrimitiveTypes.String, "", false, nil).
 			SetIdentifierField([][]string{{"id"}, {"email"}}).
 			Apply()
@@ -1112,7 +1112,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).SetIdentifierField([][]string{{"id"}, {"id"}}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{{"id"}, {"id"}}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -1133,7 +1133,7 @@ func TestSetIdentifierField(t *testing.T) {
 		txn := table.NewTransaction()
 
 		// Set identifier fields to name instead of id
-		newSchema, err := NewUpdateSchema(txn, true, true).SetIdentifierField([][]string{{"name"}}).Apply()
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).SetIdentifierField([][]string{{"name"}}).Apply()
 		assert.NoError(t, err)
 		assert.NotNil(t, newSchema)
 
@@ -1147,7 +1147,7 @@ func TestSetIdentifierField(t *testing.T) {
 		txn := table.NewTransaction()
 
 		// Set identifier fields multiple times - last one should win
-		newSchema, err := NewUpdateSchema(txn, true, true).
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			SetIdentifierField([][]string{{"id"}}).
 			SetIdentifierField([][]string{{"name"}}).
 			Apply()
@@ -1163,7 +1163,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			RenameColumn([]string{"id"}, "new_id").
 			SetIdentifierField([][]string{{"id"}}).
 			Apply()
@@ -1175,7 +1175,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		newSchema, err := NewUpdateSchema(txn, true, true).
+		newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			SetIdentifierField([][]string{{"id"}}).
 			RenameColumn([]string{"id"}, "new_id").
 			Apply()
@@ -1194,7 +1194,7 @@ func TestSetIdentifierField(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 			DeleteColumn([]string{"name"}).
 			SetIdentifierField([][]string{{"name"}}).
 			Apply()
@@ -1212,7 +1212,7 @@ func TestSetIdentifierFieldDeterministicOrder(t *testing.T) {
 			table := New([]string{"id"}, testMetadata, "", nil, nil)
 			txn := table.NewTransaction()
 
-			newSchema, err := NewUpdateSchema(txn, true, true).
+			newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 				SetIdentifierField([][]string{{"age"}, {"id"}, {"name"}}).
 				Apply()
 			require.NoError(t, err)
@@ -1232,12 +1232,33 @@ func TestSetIdentifierFieldDeterministicOrder(t *testing.T) {
 	})
 }
 
+func TestUpdateSchemaNamedOptions(t *testing.T) {
+	tbl := New([]string{"id"}, testMetadata, "", nil, nil)
+	txn := tbl.NewTransaction()
+
+	defaults := NewUpdateSchema(txn)
+	require.True(t, defaults.caseSensitive)
+	require.False(t, defaults.allowIncompatibleChanges)
+
+	caseInsensitive := NewUpdateSchema(txn, WithCaseInsensitiveSchemaMatching())
+	require.False(t, caseInsensitive.caseSensitive)
+	require.False(t, caseInsensitive.allowIncompatibleChanges)
+
+	incompatible := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges())
+	require.True(t, incompatible.caseSensitive)
+	require.True(t, incompatible.allowIncompatibleChanges)
+
+	both := txn.UpdateSchema(WithCaseInsensitiveSchemaMatching(), AllowIncompatibleSchemaChanges())
+	require.False(t, both.caseSensitive)
+	require.True(t, both.allowIncompatibleChanges)
+}
+
 func TestErrorHandling(t *testing.T) {
 	t.Run("test incompatible changes without allowIncompatibleChanges", func(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, false).UpdateColumn([]string{"name"}, ColumnUpdate{
+		_, err := NewUpdateSchema(txn).UpdateColumn([]string{"name"}, ColumnUpdate{
 			Required: iceberg.Optional[bool]{Valid: true, Val: true},
 		}).Apply()
 		assert.Error(t, err)
@@ -1262,7 +1283,7 @@ func TestErrorHandling(t *testing.T) {
 		table := New([]string{"geo"}, geoMeta, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err = NewUpdateSchema(txn, true, false).UpdateColumn([]string{"geog"}, ColumnUpdate{
+		_, err = NewUpdateSchema(txn).UpdateColumn([]string{"geog"}, ColumnUpdate{
 			FieldType: iceberg.Optional[iceberg.Type]{Valid: true, Val: targetGeog},
 		}).Apply()
 		assert.Error(t, err)
@@ -1273,7 +1294,7 @@ func TestErrorHandling(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, false).AddColumn([]string{"required_field"}, iceberg.PrimitiveTypes.String, "", true, nil).Apply()
+		_, err := NewUpdateSchema(txn).AddColumn([]string{"required_field"}, iceberg.PrimitiveTypes.String, "", true, nil).Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "required field required_field has no default value")
 	})
@@ -1282,7 +1303,7 @@ func TestErrorHandling(t *testing.T) {
 		table := New([]string{"id"}, testMetadata, "", nil, nil)
 		txn := table.NewTransaction()
 
-		_, err := NewUpdateSchema(txn, true, true).AddColumn([]string{"age_field"}, iceberg.PrimitiveTypes.String, "", false, iceberg.Int32Literal(25)).Apply()
+		_, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).AddColumn([]string{"age_field"}, iceberg.PrimitiveTypes.String, "", false, iceberg.Int32Literal(25)).Apply()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "default value type mismatch")
 	})
@@ -1307,7 +1328,7 @@ func TestBuildUpdates(t *testing.T) {
 
 		table := New([]string{"table"}, metadata, "", nil, nil)
 		txn := table.NewTransaction()
-		updateSchema := txn.UpdateSchema(true, false).DeleteColumn([]string{"name"})
+		updateSchema := txn.UpdateSchema().DeleteColumn([]string{"name"})
 
 		updates, requirements, err := updateSchema.BuildUpdates()
 		assert.NoError(t, err)
@@ -1358,7 +1379,7 @@ func TestAddColumnMonotonicFieldIDs(t *testing.T) {
 	tbl := New([]string{"id"}, meta, "", nil, nil)
 	txn := tbl.NewTransaction()
 
-	newSchema, err := NewUpdateSchema(txn, true, true).
+	newSchema, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 		AddColumn([]string{"fresh"}, iceberg.PrimitiveTypes.String, "", false, nil).
 		Apply()
 	assert.NoError(t, err)
@@ -1387,7 +1408,7 @@ func TestApplyChangesListElementOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"tags", "element"}, ColumnUpdate{
 				Required: iceberg.Optional[bool]{Val: false, Valid: true},
 			}).Apply()
@@ -1406,7 +1427,7 @@ func TestApplyChangesListElementOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, true).
+		newSchema, err := NewUpdateSchema(table.NewTransaction(), AllowIncompatibleSchemaChanges()).
 			UpdateColumn([]string{"tags", "element"}, ColumnUpdate{
 				Required: iceberg.Optional[bool]{Val: true, Valid: true},
 			}).Apply()
@@ -1425,7 +1446,7 @@ func TestApplyChangesListElementOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		_, err = NewUpdateSchema(table.NewTransaction(), true, false).
+		_, err = NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"tags", "element"}, ColumnUpdate{
 				Required: iceberg.Optional[bool]{Val: true, Valid: true},
 			}).Apply()
@@ -1438,7 +1459,7 @@ func TestApplyChangesListElementOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"tags", "element"}, ColumnUpdate{
 				FieldType: iceberg.Optional[iceberg.Type]{Val: iceberg.PrimitiveTypes.Int64, Valid: true},
 				Required:  iceberg.Optional[bool]{Val: false, Valid: true},
@@ -1460,7 +1481,7 @@ func TestApplyChangesListElementOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"tags", "element"}, ColumnUpdate{
 				FieldType: iceberg.Optional[iceberg.Type]{Val: iceberg.PrimitiveTypes.Int64, Valid: true},
 			}).Apply()
@@ -1479,7 +1500,7 @@ func TestApplyChangesListElementOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"tags", "element"}, ColumnUpdate{
 				Doc: iceberg.Optional[string]{Val: "element doc", Valid: true},
 			}).Apply()
@@ -1513,7 +1534,7 @@ func TestApplyChangesMapValueOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"properties", "value"}, ColumnUpdate{
 				Required: iceberg.Optional[bool]{Val: false, Valid: true},
 			}).Apply()
@@ -1532,7 +1553,7 @@ func TestApplyChangesMapValueOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, true).
+		newSchema, err := NewUpdateSchema(table.NewTransaction(), AllowIncompatibleSchemaChanges()).
 			UpdateColumn([]string{"properties", "value"}, ColumnUpdate{
 				Required: iceberg.Optional[bool]{Val: true, Valid: true},
 			}).Apply()
@@ -1551,7 +1572,7 @@ func TestApplyChangesMapValueOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		_, err = NewUpdateSchema(table.NewTransaction(), true, false).
+		_, err = NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"properties", "value"}, ColumnUpdate{
 				Required: iceberg.Optional[bool]{Val: true, Valid: true},
 			}).Apply()
@@ -1564,7 +1585,7 @@ func TestApplyChangesMapValueOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"properties", "value"}, ColumnUpdate{
 				FieldType: iceberg.Optional[iceberg.Type]{Val: iceberg.PrimitiveTypes.Int64, Valid: true},
 				Required:  iceberg.Optional[bool]{Val: false, Valid: true},
@@ -1586,7 +1607,7 @@ func TestApplyChangesMapValueOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"properties", "value"}, ColumnUpdate{
 				FieldType: iceberg.Optional[iceberg.Type]{Val: iceberg.PrimitiveTypes.Int64, Valid: true},
 			}).Apply()
@@ -1605,7 +1626,7 @@ func TestApplyChangesMapValueOptionalityUpdates(t *testing.T) {
 		require.NoError(t, err)
 
 		table := New([]string{"id"}, meta, "", nil, nil)
-		newSchema, err := NewUpdateSchema(table.NewTransaction(), true, false).
+		newSchema, err := NewUpdateSchema(table.NewTransaction()).
 			UpdateColumn([]string{"properties", "value"}, ColumnUpdate{
 				Doc: iceberg.Optional[string]{Val: "value doc", Valid: true},
 			}).Apply()
@@ -1639,7 +1660,7 @@ func TestAddColumnAfterDropHighestID(t *testing.T) {
 	tbl := New([]string{"id"}, baseMeta, "", nil, nil)
 	txn := tbl.NewTransaction()
 
-	withExtra, err := NewUpdateSchema(txn, true, true).
+	withExtra, err := NewUpdateSchema(txn, AllowIncompatibleSchemaChanges()).
 		AddColumn([]string{"temp_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
 		Apply()
 	assert.NoError(t, err)
@@ -1664,7 +1685,7 @@ func TestAddColumnAfterDropHighestID(t *testing.T) {
 	tbl2 := New([]string{"id"}, afterAdd, "", nil, nil)
 	txn2 := tbl2.NewTransaction()
 
-	afterDrop, err := NewUpdateSchema(txn2, true, true).
+	afterDrop, err := NewUpdateSchema(txn2, AllowIncompatibleSchemaChanges()).
 		DeleteColumn([]string{"temp_col"}).
 		Apply()
 	assert.NoError(t, err)
@@ -1708,7 +1729,7 @@ func TestAddColumnAfterDropHighestID(t *testing.T) {
 	tbl3 := New([]string{"id"}, afterDropMeta, "", nil, nil)
 	txn3 := tbl3.NewTransaction()
 
-	finalSchema, err := NewUpdateSchema(txn3, true, true).
+	finalSchema, err := NewUpdateSchema(txn3, AllowIncompatibleSchemaChanges()).
 		AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.Int64, "", false, nil).
 		Apply()
 	assert.NoError(t, err)
@@ -1739,7 +1760,7 @@ func TestUnionByNameAddTopLevelColumns(t *testing.T) {
 		iceberg.NestedField{ID: 3, Name: "age", Type: iceberg.PrimitiveTypes.Int32, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	name, ok := applied.FindFieldByName("name")
@@ -1761,7 +1782,7 @@ func TestUnionByNameAddedColumnsAreOptional(t *testing.T) {
 		iceberg.NestedField{ID: 2, Name: "data", Type: iceberg.PrimitiveTypes.String, Required: true},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	data, ok := applied.FindFieldByName("data")
@@ -1788,7 +1809,7 @@ func TestUnionByNameAddNestedStructField(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	zip, ok := applied.FindFieldByName("address.zip")
@@ -1807,7 +1828,7 @@ func TestUnionByNamePromoteType(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "amount", Type: iceberg.PrimitiveTypes.Int64, Required: true},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	amount, ok := applied.FindFieldByName("amount")
@@ -1823,7 +1844,7 @@ func TestUnionByNamePromoteFloatToDouble(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "amount", Type: iceberg.PrimitiveTypes.Float64, Required: true},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	amount, ok := applied.FindFieldByName("amount")
@@ -1839,7 +1860,7 @@ func TestUnionByNamePromoteDecimalPrecision(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "amount", Type: iceberg.DecimalTypeOf(18, 2), Required: true},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	amount, ok := applied.FindFieldByName("amount")
@@ -1855,7 +1876,7 @@ func TestUnionByNameIgnoreNarrowingType(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "amount", Type: iceberg.PrimitiveTypes.Int32, Required: true},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	amount, ok := applied.FindFieldByName("amount")
@@ -1878,7 +1899,7 @@ func TestUnionByNameInvalidMapValueTypeChange(t *testing.T) {
 		}, Required: false},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.Error(t, err, "map value string -> long is not a valid promotion")
 }
 
@@ -1894,7 +1915,7 @@ func TestUnionByNamePromoteListElement(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	elem, ok := applied.FindFieldByName("vals.element")
@@ -1910,7 +1931,7 @@ func TestUnionByNameMakeColumnOptional(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	id, ok := applied.FindFieldByName("id")
@@ -1926,7 +1947,7 @@ func TestUnionByNameUpdateDoc(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: true, Doc: "identifier"},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	id, ok := applied.FindFieldByName("id")
@@ -1945,7 +1966,7 @@ func TestUnionByNameUpdateWriteDefaultOnly(t *testing.T) {
 		},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	id, ok := applied.FindFieldByName("id")
@@ -1963,7 +1984,7 @@ func TestUnionByNameCaseSensitivity(t *testing.T) {
 	)
 
 	t.Run("case sensitive adds a new column", func(t *testing.T) {
-		applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+		applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 		require.NoError(t, err)
 
 		_, ok := applied.FindFieldByName("id")
@@ -1973,7 +1994,7 @@ func TestUnionByNameCaseSensitivity(t *testing.T) {
 	})
 
 	t.Run("case insensitive matches the existing column", func(t *testing.T) {
-		applied, err := NewUpdateSchema(unionTxn(t, current), false, false).UnionByNameWith(incoming).Apply()
+		applied, err := NewUpdateSchema(unionTxn(t, current), WithCaseInsensitiveSchemaMatching()).UnionByNameWith(incoming).Apply()
 		require.NoError(t, err)
 
 		assert.Len(t, applied.Fields(), 1)
@@ -1989,7 +2010,7 @@ func TestUnionByNameIdenticalSchemaIsNoop(t *testing.T) {
 		iceberg.NestedField{ID: 2, Name: "name", Type: iceberg.PrimitiveTypes.String, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(current).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(current).Apply()
 	require.NoError(t, err)
 	assert.Equal(t, current.AsStruct(), applied.AsStruct())
 }
@@ -2006,7 +2027,7 @@ func TestUnionByNameUnchangedVariantIsNoop(t *testing.T) {
 	require.NoError(t, err)
 	txn := New([]string{"tbl"}, meta, "", nil, nil).NewTransaction()
 
-	applied, err := NewUpdateSchema(txn, true, false).UnionByNameWith(current).Apply()
+	applied, err := NewUpdateSchema(txn).UnionByNameWith(current).Apply()
 	require.NoError(t, err)
 	assert.Equal(t, current.AsStruct(), applied.AsStruct())
 }
@@ -2016,7 +2037,7 @@ func TestUnionByNameNilSchema(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: true},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(nil).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(nil).Apply()
 	assert.Error(t, err)
 }
 
@@ -2035,7 +2056,7 @@ func TestUnionByNameRejectsMapKeyChange(t *testing.T) {
 		}, Required: false},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.Error(t, err, "widening map key promotion int -> long must be rejected")
 }
 
@@ -2054,7 +2075,7 @@ func TestUnionByNameIgnoresNarrowingMapKey(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	key, ok := applied.FindFieldByName("m.key")
@@ -2076,7 +2097,7 @@ func TestUnionByNamePromoteMapValue(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	value, ok := applied.FindFieldByName("m.value")
@@ -2098,7 +2119,7 @@ func TestUnionByNameAddNewNestedStructWithChildren(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	address, ok := applied.FindFieldByName("address")
@@ -2137,7 +2158,7 @@ func TestUnionByNameAddFieldToListOfStruct(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	name, ok := applied.FindFieldByName("events.element.name")
@@ -2173,7 +2194,7 @@ func TestUnionByNameAddFieldToMapValueStruct(t *testing.T) {
 		}, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	b, ok := applied.FindFieldByName("m.value.b")
@@ -2192,7 +2213,7 @@ func TestUnionByNameEmptyDocDoesNotClearExisting(t *testing.T) {
 		iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: true, Doc: ""},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	id, ok := applied.FindFieldByName("id")
@@ -2212,7 +2233,7 @@ func TestUnionByNameAddedColumnPreservesInitialDefault(t *testing.T) {
 		},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	count, ok := applied.FindFieldByName("count")
@@ -2233,7 +2254,7 @@ func TestUnionByNameRejectsInvalidAddedColumnDefault(t *testing.T) {
 			Required: false, InitialDefault: "not-an-int",
 		},
 	)
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incomingInitial).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incomingInitial).Apply()
 	require.ErrorContains(t, err, "invalid initial-default for count")
 
 	incomingWrite := iceberg.NewSchema(1,
@@ -2243,7 +2264,7 @@ func TestUnionByNameRejectsInvalidAddedColumnDefault(t *testing.T) {
 			Required: false, WriteDefault: "not-a-date",
 		},
 	)
-	_, err = NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incomingWrite).Apply()
+	_, err = NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incomingWrite).Apply()
 	require.ErrorContains(t, err, "invalid write-default for when")
 }
 
@@ -2258,7 +2279,7 @@ func TestUnionByNameRejectsInvalidWriteDefaultUpdate(t *testing.T) {
 		},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.ErrorContains(t, err, "invalid write-default for id")
 }
 
@@ -2278,7 +2299,7 @@ func TestUnionByNameRejectsInvalidNestedAddedColumnDefault(t *testing.T) {
 			},
 		}},
 	)
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incomingStruct).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incomingStruct).Apply()
 	require.ErrorContains(t, err, "invalid initial-default for zip")
 
 	incomingMap := iceberg.NewSchema(1,
@@ -2295,7 +2316,7 @@ func TestUnionByNameRejectsInvalidNestedAddedColumnDefault(t *testing.T) {
 			},
 		}},
 	)
-	_, err = NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incomingMap).Apply()
+	_, err = NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incomingMap).Apply()
 	require.ErrorContains(t, err, "invalid write-default for when")
 
 	incomingMapKey := iceberg.NewSchema(1,
@@ -2312,7 +2333,7 @@ func TestUnionByNameRejectsInvalidNestedAddedColumnDefault(t *testing.T) {
 			ValueID: 5, ValueRequired: false, ValueType: iceberg.PrimitiveTypes.String,
 		}},
 	)
-	_, err = NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incomingMapKey).Apply()
+	_, err = NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incomingMapKey).Apply()
 	require.ErrorContains(t, err, "invalid initial-default for code")
 }
 
@@ -2328,7 +2349,7 @@ func TestUnionByNameRejectsMistypedNativeDefault(t *testing.T) {
 		},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.ErrorContains(t, err, "invalid initial-default for count")
 }
 
@@ -2343,7 +2364,7 @@ func TestUnionByNamePromoteDecimalKeepsWiderWriteDefault(t *testing.T) {
 		},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	require.NoError(t, err)
 
 	amount, ok := applied.FindFieldByName("amount")
@@ -2372,7 +2393,7 @@ func TestUnionByNameAddedComplexColumnDefault(t *testing.T) {
 			InitialDefault: map[string]any{"zip": "00000"},
 		},
 	)
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(valid).Apply()
+	applied, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(valid).Apply()
 	require.NoError(t, err)
 	addr, ok := applied.FindFieldByName("addr")
 	require.True(t, ok)
@@ -2385,7 +2406,7 @@ func TestUnionByNameAddedComplexColumnDefault(t *testing.T) {
 			InitialDefault: "not-json",
 		},
 	)
-	_, err = NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(invalid).Apply()
+	_, err = NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(invalid).Apply()
 	require.ErrorContains(t, err, "must have null or JSON object initial-default")
 }
 
@@ -2403,7 +2424,7 @@ func TestUnionByNameCannotExtendStructAddedByPriorOp(t *testing.T) {
 		}},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, true).
+	_, err := NewUpdateSchema(unionTxn(t, current), AllowIncompatibleSchemaChanges()).
 		AddColumn([]string{"addr"}, &iceberg.StructType{
 			FieldList: []iceberg.NestedField{
 				{ID: 5, Name: "city", Type: iceberg.PrimitiveTypes.String, Required: false},
@@ -2437,7 +2458,7 @@ func TestUnionByNameMirroredSchemas(t *testing.T) {
 	txn := unionTxn(t, current)
 	baseline := txn.meta.CurrentSchema().AsStruct()
 
-	applied, err := NewUpdateSchema(txn, true, false).UnionByNameWith(mirrored).Apply()
+	applied, err := NewUpdateSchema(txn).UnionByNameWith(mirrored).Apply()
 	require.NoError(t, err)
 	assert.Equal(t, baseline, applied.AsStruct(),
 		"union operates by name; differing incoming field IDs must not cause changes")
@@ -2455,7 +2476,7 @@ func TestUnionByNameInvalidListElementTypeChange(t *testing.T) {
 		}, Required: false},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+	_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 	assert.Error(t, err, "list<string> -> list<long> is not a valid promotion")
 }
 
@@ -2538,7 +2559,7 @@ func TestUnionByNameRejectsCrossKindChanges(t *testing.T) {
 			current := iceberg.NewSchema(1, tc.existing)
 			incoming := iceberg.NewSchema(1, tc.incoming)
 
-			_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+			_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.errContains)
 		})
@@ -2567,7 +2588,7 @@ func TestUnionByNameRejectsInvalidPromotions(t *testing.T) {
 				iceberg.NestedField{ID: 1, Name: "c", Type: tc.incoming, Required: false},
 			)
 
-			_, err := NewUpdateSchema(unionTxn(t, current), true, false).UnionByNameWith(incoming).Apply()
+			_, err := NewUpdateSchema(unionTxn(t, current)).UnionByNameWith(incoming).Apply()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "cannot change column type")
 		})
@@ -2591,7 +2612,7 @@ func TestUnionByNameSequentialCalls(t *testing.T) {
 		iceberg.NestedField{ID: 2, Name: "age", Type: iceberg.PrimitiveTypes.Int32, Required: false},
 	)
 
-	applied, err := NewUpdateSchema(unionTxn(t, current), true, false).
+	applied, err := NewUpdateSchema(unionTxn(t, current)).
 		UnionByNameWith(first).
 		UnionByNameWith(second).
 		Apply()
@@ -2614,7 +2635,7 @@ func TestUnionByNameRejectsOverlappingAdds(t *testing.T) {
 		iceberg.NestedField{ID: 2, Name: "name", Type: iceberg.PrimitiveTypes.String, Required: false},
 	)
 
-	_, err := NewUpdateSchema(unionTxn(t, current), true, false).
+	_, err := NewUpdateSchema(unionTxn(t, current)).
 		UnionByNameWith(overlap).
 		UnionByNameWith(overlap).
 		Apply()

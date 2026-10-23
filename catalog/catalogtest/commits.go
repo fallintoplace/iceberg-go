@@ -92,7 +92,7 @@ func testUpdateTableSchema(t *testing.T, cfg Config) {
 	originalSchemaID := tbl.Schema().ID
 
 	txn := tbl.NewTransaction()
-	require.NoError(t, txn.UpdateSchema(true, false).
+	require.NoError(t, txn.UpdateSchema().
 		AddColumn([]string{"extra"}, iceberg.PrimitiveTypes.Int64, "", false, nil).
 		Commit())
 	_, err := txn.Commit(ctx)
@@ -122,7 +122,7 @@ func testCommitWithStaleRequirement(t *testing.T, cfg Config) {
 
 	// Another writer evolves the schema, moving the current schema ID.
 	txn := stale.NewTransaction()
-	require.NoError(t, txn.UpdateSchema(true, false).
+	require.NoError(t, txn.UpdateSchema().
 		AddColumn([]string{"extra"}, iceberg.PrimitiveTypes.Int64, "", false, nil).
 		Commit())
 	_, err := txn.Commit(ctx)
