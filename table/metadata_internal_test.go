@@ -242,7 +242,7 @@ func TestMetadataV1Parsing(t *testing.T) {
 	assert.NotNil(t, meta.SnapshotByID(1925))
 	assert.Nil(t, meta.SnapshotByID(0))
 	assert.Nil(t, meta.SnapshotByName("foo"))
-	assert.Zero(t, data.DefaultSortOrderID)
+	assert.Zero(t, data.DefaultSortOrderID())
 	assert.Equal(t, UnsortedSortOrder, meta.SortOrder())
 }
 
@@ -270,7 +270,7 @@ func TestMetadataV2Parsing(t *testing.T) {
 	assert.EqualValues(t, 3051729675574597004, data.SnapshotList[0].SnapshotID)
 	assert.Equal(t, int64(1515100955770), data.SnapshotLog[0].TimestampMs)
 	assert.Equal(t, 3, data.SortOrderList[0].OrderID())
-	assert.Equal(t, 3, data.DefaultSortOrderID)
+	assert.Equal(t, 3, data.DefaultSortOrderID())
 
 	assert.Len(t, meta.Snapshots(), 2)
 	assert.Equal(t, data.SnapshotList[1], *meta.CurrentSnapshot())
@@ -303,7 +303,7 @@ func TestMetadataV3Parsing(t *testing.T) {
 	assert.EqualValues(t, 3051729675574597004, data.SnapshotList[0].SnapshotID)
 	assert.Equal(t, int64(1515100955770), data.SnapshotLog[0].TimestampMs)
 	assert.Equal(t, 3, data.SortOrderList[0].OrderID())
-	assert.Equal(t, 3, data.DefaultSortOrderID)
+	assert.Equal(t, 3, data.DefaultSortOrderID())
 
 	// Test v3 specific fields
 	assert.Equal(t, int64(1000), meta.NextRowID())
@@ -1429,7 +1429,7 @@ func TestSortOrderUnsorted(t *testing.T) {
 	var meta metadataV2
 	require.NoError(t, json.Unmarshal([]byte(sortOrderUnsorted), &meta))
 
-	assert.Equal(t, UnsortedSortOrderID, meta.DefaultSortOrderID)
+	assert.Equal(t, UnsortedSortOrderID, meta.DefaultSortOrderID())
 	assert.Len(t, meta.SortOrderList, 0)
 }
 
@@ -2644,7 +2644,7 @@ func TestDefaultSortOrder(t *testing.T) {
 	orderID := 1234
 	meta, err := getTestTableMetadata("TableMetadataV2Valid.json")
 	require.NoError(t, err)
-	meta.(*metadataV2).DefaultSortOrderID = orderID
+	meta.(*metadataV2).commonMetadata.DefaultSortOrderID = orderID
 	sortOrder, err := NewSortOrder(orderID, []SortField{{
 		SourceIDs: []int{2},
 		Transform: iceberg.IdentityTransform{},

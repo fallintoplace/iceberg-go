@@ -78,7 +78,7 @@ func withDefaultSortOrderChanged(t *testing.T, base Metadata) Metadata {
 	require.NoError(t, builder.SetDefaultSortOrderID(-1))
 	meta, err := builder.Build()
 	require.NoError(t, err)
-	require.NotEqual(t, base.DefaultSortOrder(), meta.DefaultSortOrder())
+	require.NotEqual(t, base.DefaultSortOrderID(), meta.DefaultSortOrderID())
 
 	return meta
 }

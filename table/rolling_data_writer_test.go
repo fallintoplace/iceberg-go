@@ -455,7 +455,7 @@ func (s *RollingDataWriterTestSuite) TestWriterFactoryDoesNotStampSortOrderID() 
 	s.Require().NoError(metaBuilder.SetDefaultSortOrderID(-1))
 	builtMeta, err := metaBuilder.Build()
 	s.Require().NoError(err)
-	s.Require().NotEqual(UnsortedSortOrderID, builtMeta.DefaultSortOrder(),
+	s.Require().NotEqual(UnsortedSortOrderID, builtMeta.DefaultSortOrderID(),
 		"sanity: sort order id should be non-zero")
 
 	writeUUID := uuid.New()
