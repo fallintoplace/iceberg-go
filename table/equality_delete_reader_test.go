@@ -167,7 +167,7 @@ func TestEqualityDeleteReadRoundTrip(t *testing.T) {
 		"expected equality deletes to apply when the equality field is not projected")
 
 	tx3 := tbl.NewTransaction()
-	require.NoError(t, tx3.UpdateSchema(true, false).DeleteColumn([]string{"id"}).Commit())
+	require.NoError(t, tx3.UpdateSchema().DeleteColumn([]string{"id"}).Commit())
 	tbl, err = tx3.Commit(t.Context())
 	require.NoError(t, err)
 	_, currentHasEqualityField := tbl.Schema().FindFieldByID(1)

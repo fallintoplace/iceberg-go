@@ -56,7 +56,7 @@ type move struct {
 // Basic Usage:
 //
 //	txn := table.NewTransaction()
-//	updateSchema := txn.UpdateSchema(true, false)
+//	updateSchema := txn.UpdateSchema()
 //
 //	// Add a new column
 //	updateSchema.AddColumn([]string{"email"}, iceberg.PrimitiveTypes.String, "Email address", false, nil)
@@ -113,6 +113,22 @@ type UpdateSchema struct {
 // UpdateSchemaOption is a functional option for configuring UpdateSchema.
 type UpdateSchemaOption func(*UpdateSchema)
 
+// WithCaseInsensitiveSchemaMatching resolves schema field names without
+// case sensitivity. Schema matching is case-sensitive by default.
+func WithCaseInsensitiveSchemaMatching() UpdateSchemaOption {
+	return func(u *UpdateSchema) {
+		u.caseSensitive = false
+	}
+}
+
+// AllowIncompatibleSchemaChanges allows changes that can break reads of
+// existing data. Use only after verifying the old data remains compatible.
+func AllowIncompatibleSchemaChanges() UpdateSchemaOption {
+	return func(u *UpdateSchema) {
+		u.allowIncompatibleChanges = true
+	}
+}
+
 // WithNameMapping configures the UpdateSchema to use the provided name mapping
 // for tracking field name changes and ensuring consistency during schema evolution.
 func WithNameMapping(nameMapping iceberg.NameMapping) UpdateSchemaOption {
@@ -124,18 +140,10 @@ func WithNameMapping(nameMapping iceberg.NameMapping) UpdateSchemaOption {
 // NewUpdateSchema creates a new UpdateSchema instance for managing schema changes
 // within a transaction.
 //
-// Parameters:
-//   - txn: The transaction that this schema update will be applied to.
-//   - caseSensitive: If true, field name lookups are case-sensitive; if false,
-//     field names are matched case-insensitively.
-//   - allowIncompatibleChanges: If true, allows schema changes that would normally
-//     be rejected for being incompatible (e.g., adding required fields without
-//     default values, changing field types in non-promotable ways, or changing
-//     column nullability from optional to required).
-//   - opts: Optional configuration functions to customize the UpdateSchema behavior.
-//
-// Returns an UpdateSchema instance that can be used to build and apply schema changes.
-func NewUpdateSchema(txn *Transaction, caseSensitive bool, allowIncompatibleChanges bool, opts ...UpdateSchemaOption) *UpdateSchema {
+// Field lookup is case-sensitive and incompatible changes are rejected by
+// default. Pass [WithCaseInsensitiveSchemaMatching] or
+// [AllowIncompatibleSchemaChanges] to explicitly change those defaults.
+func NewUpdateSchema(txn *Transaction, opts ...UpdateSchemaOption) *UpdateSchema {
 	u := &UpdateSchema{
 		txn:    txn,
 		schema: nil,
@@ -149,8 +157,8 @@ func NewUpdateSchema(txn *Transaction, caseSensitive bool, allowIncompatibleChan
 		parentID:             make(map[int]int),
 
 		addedNameToID:            make(map[string]int),
-		allowIncompatibleChanges: allowIncompatibleChanges,
-		caseSensitive:            caseSensitive,
+		allowIncompatibleChanges: false,
+		caseSensitive:            true,
 		nameMapping:              nil,
 		ops:                      make([]func() error, 0),
 	}

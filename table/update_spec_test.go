@@ -537,7 +537,7 @@ func TestUpdateSpecReadsStagedTransactionMetadata(t *testing.T) {
 	t.Run("end-to-end: partition by column added earlier in the same transaction", func(t *testing.T) {
 		txn := testNonPartitionedTable.NewTransaction()
 
-		require.NoError(t, txn.UpdateSchema(false, false).
+		require.NoError(t, txn.UpdateSchema(table.WithCaseInsensitiveSchemaMatching()).
 			AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
 			Commit())
 
@@ -565,7 +565,7 @@ func TestUpdateSpecReadsStagedTransactionMetadata(t *testing.T) {
 	t.Run("auto-generated partition name resolves against the staged schema", func(t *testing.T) {
 		txn := testNonPartitionedTable.NewTransaction()
 
-		require.NoError(t, txn.UpdateSchema(false, false).
+		require.NoError(t, txn.UpdateSchema(table.WithCaseInsensitiveSchemaMatching()).
 			AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
 			Commit())
 
@@ -593,7 +593,7 @@ func TestUpdateSpecReadsStagedTransactionMetadata(t *testing.T) {
 		txn := testNonPartitionedTable.NewTransaction()
 
 		// Rename an existing column, staging it into the transaction.
-		require.NoError(t, txn.UpdateSchema(false, false).
+		require.NoError(t, txn.UpdateSchema(table.WithCaseInsensitiveSchemaMatching()).
 			RenameColumn([]string{"name"}, "full_name").
 			Commit())
 
@@ -1245,7 +1245,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		staged := removeAndCommit(t, testPartitionedTable, "id_identity")
 
 		txnRename := staged.NewTransaction()
-		require.NoError(t, txnRename.UpdateSchema(false, false).RenameColumn([]string{"id"}, "identifier").Commit())
+		require.NoError(t, txnRename.UpdateSchema(table.WithCaseInsensitiveSchemaMatching()).RenameColumn([]string{"id"}, "identifier").Commit())
 		stagedRename, err := txnRename.StagedTable()
 		require.NoError(t, err)
 

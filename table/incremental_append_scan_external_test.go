@@ -36,7 +36,7 @@ func TestIncrementalAppendTasksPreserveHistoricalSchemaBinding(t *testing.T) {
 	tbl, snapshotID := newIncrementalResidualTestTable(t, ctx)
 
 	txn := tbl.NewTransaction()
-	require.NoError(t, txn.UpdateSchema(true, false).
+	require.NoError(t, txn.UpdateSchema().
 		RenameColumn([]string{"old_name"}, "new_name").
 		Commit())
 	var err error

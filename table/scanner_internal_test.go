@@ -2358,7 +2358,7 @@ func TestArrowScanFiltersMissingColumnInitialDefault(t *testing.T) {
 	decimalDefault := iceberg.Decimal{Val: decimal128.FromI64(1234), Scale: 2}
 
 	txn := tbl.NewTransaction()
-	require.NoError(t, txn.UpdateSchema(true, false).
+	require.NoError(t, txn.UpdateSchema().
 		AddColumn(
 			[]string{"new_col"},
 			iceberg.PrimitiveTypes.Int32,
@@ -2462,7 +2462,7 @@ func TestArrowScanFiltersMissingColumnWithoutDefault(t *testing.T) {
 	tbl := buildV3TableWithRows(t, `[{"id":1,"data":"a"},{"id":2,"data":"b"}]`)
 
 	txn := tbl.NewTransaction()
-	require.NoError(t, txn.UpdateSchema(true, false).
+	require.NoError(t, txn.UpdateSchema().
 		AddColumn([]string{"x"}, iceberg.PrimitiveTypes.Float64, "", false, nil).
 		Commit())
 	var err error

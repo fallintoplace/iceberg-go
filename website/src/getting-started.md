@@ -195,7 +195,7 @@ import "github.com/apache/iceberg-go/table"
 func addTipColumn(ctx context.Context, tbl *table.Table) (*table.Table, error) {
     txn := tbl.NewTransaction()
 
-    err := table.NewUpdateSchema(txn, true /* caseSensitive */, false /* allowIncompatible */).
+    err := table.NewUpdateSchema(txn).
         AddColumn([]string{"tip"}, iceberg.PrimitiveTypes.Float64, "Tip in dollars", false, nil).
         Commit()
     if err != nil {

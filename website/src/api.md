@@ -397,7 +397,7 @@ import "github.com/apache/iceberg-go/table"
 
 txn := tbl.NewTransaction()
 
-err := table.NewUpdateSchema(txn, true /* caseSensitive */, false /* allowIncompatibleChanges */).
+err := table.NewUpdateSchema(txn).
     AddColumn([]string{"tip"}, iceberg.PrimitiveTypes.Float64, "Tip in dollars", false, nil).
     RenameColumn([]string{"name"}, "full_name").
     DeleteColumn([]string{"deprecated_field"}).
@@ -407,7 +407,7 @@ if err != nil { /* ... */ }
 newTbl, err := txn.Commit(ctx)
 ```
 
-Reorder fields with `MoveFirst`, `MoveBefore`, or `MoveAfter`. Set `allowIncompatibleChanges` to `true` to permit type narrowing or making optional columns required.
+Reorder fields with `MoveFirst`, `MoveBefore`, or `MoveAfter`. Pass `table.AllowIncompatibleSchemaChanges()` to opt in to potentially unsafe changes, such as type narrowing or making optional columns required. Check existing data first.
 
 ### Partition evolution
 

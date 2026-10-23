@@ -736,7 +736,7 @@ func TestReplaceFilesWithDeleteFilesAllowsDroppedEqualityField(t *testing.T) {
 	sequence := currentManifestEntry(t, tbl, oldDelete.FilePath()).SequenceNum()
 
 	tx = tbl.NewTransaction()
-	require.NoError(t, tx.UpdateSchema(true, false).DeleteColumn([]string{"data"}).Commit())
+	require.NoError(t, tx.UpdateSchema().DeleteColumn([]string{"data"}).Commit())
 	tbl, err = tx.Commit(t.Context())
 	require.NoError(t, err)
 	_, currentHasDroppedField := tbl.Schema().FindFieldByID(2)

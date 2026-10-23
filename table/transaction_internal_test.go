@@ -1059,7 +1059,7 @@ func TestNewTransactionOnBranchKeepsLegacySignatureAndFailsOnUse(t *testing.T) {
 	t.Run("update schema no longer panics", func(t *testing.T) {
 		var err error
 		require.NotPanics(t, func() {
-			err = txn.UpdateSchema(true, false).
+			err = txn.UpdateSchema().
 				AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
 				Commit()
 		})
@@ -1223,7 +1223,7 @@ func TestTransactionEntryPointsRejectNilAndBrokenTransaction(t *testing.T) {
 		}},
 		{"UpdateSpec", func(txn *Transaction) error { return txn.UpdateSpec(true).AddIdentity("id").Commit() }},
 		{"UpdateSchema", func(txn *Transaction) error {
-			return txn.UpdateSchema(true, false).
+			return txn.UpdateSchema().
 				AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
 				Commit()
 		}},

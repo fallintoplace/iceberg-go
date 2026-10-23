@@ -282,7 +282,7 @@ func TestCoWRewriteDoesNotPruneMissingInitialDefault(t *testing.T) {
 	// The survivor complement is id > 5 AND flag IS NOT NULL, so pruning must
 	// not translate the missing physical column to false before projection.
 	tx = tbl.NewTransaction()
-	require.NoError(t, tx.UpdateSchema(true, false).
+	require.NoError(t, tx.UpdateSchema().
 		AddColumn([]string{"flag"}, iceberg.PrimitiveTypes.Int32, "", false, iceberg.Int32Literal(1)).
 		Commit())
 	tbl, err = tx.Commit(ctx)

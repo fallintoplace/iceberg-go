@@ -200,7 +200,7 @@ func TestCopyOnWriteDeleteKeepsRowsOfFilesWithoutTheColumn(t *testing.T) {
 				tbl := newCopyOnWriteNullRowsTable(t, version)
 
 				txn := tbl.NewTransaction()
-				require.NoError(t, txn.UpdateSchema(true, false).
+				require.NoError(t, txn.UpdateSchema().
 					AddColumn([]string{"x"}, iceberg.PrimitiveTypes.Float64, "", false, nil).Commit())
 				tbl, err := txn.Commit(ctx)
 				require.NoError(t, err)
