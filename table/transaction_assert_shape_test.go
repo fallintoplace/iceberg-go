@@ -47,7 +47,7 @@ func withDefaultSpecChanged(t *testing.T, base Metadata) Metadata {
 
 	builder, err := MetadataBuilderFromBase(base, "")
 	require.NoError(t, err)
-	spec := iceberg.NewPartitionSpecID(base.DefaultPartitionSpec()+1,
+	spec := iceberg.NewPartitionSpecID(base.DefaultPartitionSpecID()+1,
 		iceberg.PartitionField{
 			SourceIDs: []int{1},
 			FieldID:   iceberg.PartitionDataIDStart,
@@ -58,7 +58,7 @@ func withDefaultSpecChanged(t *testing.T, base Metadata) Metadata {
 	require.NoError(t, builder.SetDefaultSpecID(-1))
 	meta, err := builder.Build()
 	require.NoError(t, err)
-	require.NotEqual(t, base.DefaultPartitionSpec(), meta.DefaultPartitionSpec())
+	require.NotEqual(t, base.DefaultPartitionSpecID(), meta.DefaultPartitionSpecID())
 
 	return meta
 }

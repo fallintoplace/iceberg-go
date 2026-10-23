@@ -502,7 +502,7 @@ func (t *Transaction) AssertDefaultShape() error {
 	meta := t.tbl.Metadata()
 
 	return t.apply(nil, []Requirement{
-		AssertDefaultSpecID(meta.DefaultPartitionSpec()),
+		AssertDefaultSpecID(meta.DefaultPartitionSpecID()),
 		AssertDefaultSortOrderID(meta.DefaultSortOrder()),
 	})
 }

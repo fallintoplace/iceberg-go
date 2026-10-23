@@ -234,7 +234,7 @@ func TestMetadataV1Parsing(t *testing.T) {
 		SourceIDs: []int{1}, FieldID: 1000, Transform: iceberg.IdentityTransform{}, Name: "x",
 	}), meta.PartitionSpec())
 
-	assert.Equal(t, 0, meta.DefaultPartitionSpec())
+	assert.Equal(t, 0, meta.DefaultPartitionSpecID())
 	assert.Equal(t, 1000, *meta.LastPartitionSpecID())
 	assert.Nil(t, data.CurrentSnapshotID)
 	assert.Nil(t, meta.CurrentSnapshot())
@@ -2095,7 +2095,7 @@ func TestTableMetadataV1PartitionSpecsWithoutDefaultId(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, meta.Version(), 1)
 	require.Equal(t, meta.TableUUID(), uuid.MustParse("d20125c8-7284-442c-9aea-15fee620737c"))
-	require.Equal(t, meta.DefaultPartitionSpec(), 2)
+	require.Equal(t, meta.DefaultPartitionSpecID(), 2)
 	require.Equal(t, len(meta.PartitionSpecs()), 2)
 	spec := meta.PartitionSpec()
 	require.Equal(t, spec.ID(), 2)

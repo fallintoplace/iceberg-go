@@ -1455,7 +1455,7 @@ func (r *RestCatalogSuite) TestCreateTable200() {
 	r.EqualValues(1657810967051, tbl.Metadata().LastUpdatedMillis())
 	r.Equal(3, tbl.Metadata().LastColumnID())
 	r.Zero(tbl.Schema().ID)
-	r.Zero(tbl.Metadata().DefaultPartitionSpec())
+	r.Zero(tbl.Metadata().DefaultPartitionSpecID())
 	r.Equal(999, *tbl.Metadata().LastPartitionSpecID())
 	r.Equal(table.UnsortedSortOrder, tbl.SortOrder())
 }
@@ -1692,7 +1692,7 @@ func (r *RestCatalogSuite) TestLoadTable200() {
 	r.EqualValues(1646787054459, tbl.Metadata().LastUpdatedMillis())
 	r.Equal(2, tbl.Metadata().LastColumnID())
 	r.Zero(tbl.Schema().ID)
-	r.Zero(tbl.Metadata().DefaultPartitionSpec())
+	r.Zero(tbl.Metadata().DefaultPartitionSpecID())
 	r.Equal(999, *tbl.Metadata().LastPartitionSpecID())
 	r.Equal(table.UnsortedSortOrder, tbl.SortOrder())
 	r.EqualValues(3497810964824022504, tbl.CurrentSnapshot().SnapshotID)
@@ -2297,7 +2297,7 @@ func (r *RestCatalogSuite) TestRenameTable204() {
 	r.EqualValues(1657810967051, renamedTable.Metadata().LastUpdatedMillis())
 	r.Equal(3, renamedTable.Metadata().LastColumnID())
 	r.Zero(renamedTable.Schema().ID)
-	r.Zero(renamedTable.Metadata().DefaultPartitionSpec())
+	r.Zero(renamedTable.Metadata().DefaultPartitionSpecID())
 	r.Equal(999, *renamedTable.Metadata().LastPartitionSpecID())
 	r.Equal(table.UnsortedSortOrder, renamedTable.SortOrder())
 }

@@ -807,7 +807,7 @@ func TestUpdateSpecBuildChanges(t *testing.T) {
 		assert.Equal(t, table.UpdateAddSpec, updates[0].Action())
 		assert.Equal(t, table.UpdateSetDefaultSpec, updates[1].Action())
 		assert.Equal(t, "assert-last-assigned-partition-id", reqs[0].GetType())
-		assert.Equal(t, table.AssertDefaultSpecID(testNonPartitionedTable.Metadata().DefaultPartitionSpec()), reqs[1])
+		assert.Equal(t, table.AssertDefaultSpecID(testNonPartitionedTable.Metadata().DefaultPartitionSpecID()), reqs[1])
 	})
 
 	t.Run("build changes on removed partition field", func(t *testing.T) {
@@ -827,7 +827,7 @@ func TestUpdateSpecBuildChanges(t *testing.T) {
 		assert.Equal(t, table.UpdateAddSpec, updates[0].Action())
 		assert.Equal(t, table.UpdateSetDefaultSpec, updates[1].Action())
 		assert.Equal(t, "assert-last-assigned-partition-id", reqs[0].GetType())
-		assert.Equal(t, table.AssertDefaultSpecID(testPartitionedTable.Metadata().DefaultPartitionSpec()), reqs[1])
+		assert.Equal(t, table.AssertDefaultSpecID(testPartitionedTable.Metadata().DefaultPartitionSpecID()), reqs[1])
 	})
 
 	t.Run("build changes on renamed partition field", func(t *testing.T) {
@@ -845,7 +845,7 @@ func TestUpdateSpecBuildChanges(t *testing.T) {
 		assert.Equal(t, table.UpdateAddSpec, updates[0].Action())
 		assert.Equal(t, table.UpdateSetDefaultSpec, updates[1].Action())
 		assert.Equal(t, "assert-last-assigned-partition-id", reqs[0].GetType())
-		assert.Equal(t, table.AssertDefaultSpecID(testPartitionedTable.Metadata().DefaultPartitionSpec()), reqs[1])
+		assert.Equal(t, table.AssertDefaultSpecID(testPartitionedTable.Metadata().DefaultPartitionSpecID()), reqs[1])
 	})
 }
 
@@ -868,7 +868,7 @@ func TestUpdateSpecRemoveOnlyRaceIsFenced(t *testing.T) {
 	stagedB, err := txnB.StagedTable()
 	require.NoError(t, err)
 	movedMeta := stagedB.Metadata()
-	require.NotEqual(t, testPartitionedTable.Metadata().DefaultPartitionSpec(), movedMeta.DefaultPartitionSpec())
+	require.NotEqual(t, testPartitionedTable.Metadata().DefaultPartitionSpecID(), movedMeta.DefaultPartitionSpecID())
 	require.Equal(t, testPartitionedTable.Metadata().LastPartitionSpecID(), movedMeta.LastPartitionSpecID())
 
 	// Validating A's requirements against B's committed state must fail on
