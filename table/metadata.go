@@ -360,8 +360,8 @@ type Metadata interface {
 	SnapshotByName(name string) *Snapshot
 	// CurrentSnapshot returns the table's current snapshot.
 	CurrentSnapshot() *Snapshot
-	// Ref returns the snapshot ref for the main branch.
-	Ref() SnapshotRef
+	// Ref returns a defensive copy of the named snapshot ref, or nil when absent.
+	Ref(name string) *SnapshotRef
 	// Refs returns a list of snapshot name/reference pairs.
 	Refs() iter.Seq2[string, SnapshotRef]
 	// SnapshotLogs returns the list of snapshot logs for the table.
@@ -2425,8 +2425,14 @@ func (c *commonMetadata) checkRequiredFields() error {
 	return nil
 }
 
-func (c *commonMetadata) Ref() SnapshotRef {
-	return cloneSnapshotRef(c.SnapshotRefs[MainBranch])
+func (c *commonMetadata) Ref(name string) *SnapshotRef {
+	ref, ok := c.SnapshotRefs[name]
+	if !ok {
+		return nil
+	}
+
+	cloned := cloneSnapshotRef(ref)
+	return &cloned
 }
 
 func (c *commonMetadata) Refs() iter.Seq2[string, SnapshotRef] {
