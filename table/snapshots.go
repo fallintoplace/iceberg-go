@@ -549,14 +549,21 @@ type SnapshotLogEntry struct {
 }
 
 // SnapshotLogEntryAsOf returns the snapshot-log entry with the greatest
-// timestamp at or before timestampMs (or strictly before it when inclusive is
-// false), and whether one was found. Snapshot-log entries can be out of
-// chronological order when commits have small clock skews, so the entry is
-// chosen by timestamp rather than by position. On equal timestamps the earliest
-// entry in log order wins, matching Java's
-// SnapshotUtil.nullableSnapshotIdAsOfTime. It is the time-travel resolution
-// used by the as-of-timestamp scan and the metadata_log_entries metadata table.
-func SnapshotLogEntryAsOf(entries iter.Seq[SnapshotLogEntry], timestampMs int64, inclusive bool) (SnapshotLogEntry, bool) {
+// timestamp at or before timestampMs, and whether one was found. Snapshot-log
+// entries may be out of chronological order because of clock skew. Equal
+// timestamps select the first entry in log order, matching Java's
+// SnapshotUtil.nullableSnapshotIdAsOfTime.
+func SnapshotLogEntryAsOf(entries iter.Seq[SnapshotLogEntry], timestampMs int64) (SnapshotLogEntry, bool) {
+	return snapshotLogEntryAt(entries, timestampMs, true)
+}
+
+// SnapshotLogEntryBefore returns the latest log entry strictly before
+// timestampMs. Equal timestamps are excluded.
+func SnapshotLogEntryBefore(entries iter.Seq[SnapshotLogEntry], timestampMs int64) (SnapshotLogEntry, bool) {
+	return snapshotLogEntryAt(entries, timestampMs, false)
+}
+
+func snapshotLogEntryAt(entries iter.Seq[SnapshotLogEntry], timestampMs int64, inclusive bool) (SnapshotLogEntry, bool) {
 	var (
 		best  SnapshotLogEntry
 		found bool

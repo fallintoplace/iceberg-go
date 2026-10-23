@@ -642,7 +642,7 @@ func (i InspectTable) MetadataLogEntries(ctx context.Context) (array.RecordReade
 // The snapshot ID remains available when the snapshot itself has expired from
 // metadata.
 func latestSnapshotAt(metadata Metadata, timestampMs int64) (int64, *Snapshot, bool) {
-	entry, found := SnapshotLogEntryAsOf(metadata.SnapshotLogs(), timestampMs, true)
+	entry, found := SnapshotLogEntryAsOf(metadata.SnapshotLogs(), timestampMs)
 	if !found {
 		return 0, nil, false
 	}
