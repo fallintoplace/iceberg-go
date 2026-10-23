@@ -338,7 +338,7 @@ func (b *MetadataBuilder) SetFormatVersion(formatVersion int) *MetadataBuilder {
 	return b
 }
 
-func (b *MetadataBuilder) SetLoc(loc string) *MetadataBuilder {
+func (b *MetadataBuilder) SetLocation(loc string) *MetadataBuilder {
 	if b.err != nil {
 		return b
 	}

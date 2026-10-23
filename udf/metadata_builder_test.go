@@ -106,7 +106,7 @@ func TestBuildNewMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	meta, err := builder.
-		SetLoc("s3://bucket/functions/add_one").
+		SetLocation("s3://bucket/functions/add_one").
 		SetDoc("Adds one").
 		SetSecure(true).
 		SetProperties(iceberg.Properties{"owner": "iceberg-go"}).
@@ -556,7 +556,7 @@ func TestBuilderNoopsAndErrorGuards(t *testing.T) {
 	builder, err := MetadataBuilderFromBase(base)
 	require.NoError(t, err)
 	builder = builder.
-		SetLoc(base.Location()).
+		SetLocation(base.Location()).
 		SetSecure(base.Secure()).
 		SetDoc(base.Doc()).
 		SetProperties(nil).
@@ -570,7 +570,7 @@ func TestBuilderNoopsAndErrorGuards(t *testing.T) {
 
 	firstErr := builder.Err()
 	builder = builder.
-		SetLoc("s3://other").
+		SetLocation("s3://other").
 		SetProperties(iceberg.Properties{"k": "v"}).
 		RemoveProperties([]string{"k"}).
 		SetSecure(true).

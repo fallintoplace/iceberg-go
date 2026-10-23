@@ -46,7 +46,7 @@ func newPositionDeleteUnpartitionedMetadata(t *testing.T, formatVersion int) *Me
 	require.NoError(t, mb.SetCurrentSchemaID(0))
 	require.NoError(t, mb.AddPartitionSpec(iceberg.UnpartitionedSpec, true))
 	require.NoError(t, mb.SetDefaultSpecID(0))
-	require.NoError(t, mb.SetLoc("file:///pos-delete-test"))
+	require.NoError(t, mb.SetLocation("file:///pos-delete-test"))
 	addUnsortedSortOrder(t, mb)
 
 	return mb
@@ -67,7 +67,7 @@ func newPositionDeletePartitionedMetadata(t *testing.T, formatVersion int) *Meta
 	})
 	require.NoError(t, mb.AddPartitionSpec(&partitionSpec, true))
 	require.NoError(t, mb.SetDefaultSpecID(0))
-	require.NoError(t, mb.SetLoc("file:///pos-delete-test-partitioned"))
+	require.NoError(t, mb.SetLocation("file:///pos-delete-test-partitioned"))
 	addUnsortedSortOrder(t, mb)
 
 	return mb

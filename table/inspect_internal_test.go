@@ -3022,7 +3022,7 @@ func newInspectPositionDeletesMetadataWithSchema(
 	require.NoError(t, mb.SetCurrentSchemaID(0))
 	require.NoError(t, mb.AddPartitionSpec(iceberg.UnpartitionedSpec, true))
 	require.NoError(t, mb.SetDefaultSpecID(0))
-	require.NoError(t, mb.SetLoc("mem://position-deletes/table"))
+	require.NoError(t, mb.SetLocation("mem://position-deletes/table"))
 	addUnsortedSortOrder(t, mb)
 	metadata, err := mb.Build()
 	require.NoError(t, err)

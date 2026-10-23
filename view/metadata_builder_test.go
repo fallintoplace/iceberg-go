@@ -84,12 +84,12 @@ func TestBuild_NullAndMissingFields(t *testing.T) {
 	assert.ErrorContains(t, err, "location is required")
 
 	// Missing Versions
-	md, err = newTestBuilder().SetLoc("location").Build()
+	md, err = newTestBuilder().SetLocation("location").Build()
 	assert.Nil(t, md)
 	assert.ErrorContains(t, err, "at least one version is required")
 
 	// Attempted setting to missing version ID
-	_, err = newTestBuilder().SetLoc("location").SetCurrentVersionID(1).Build()
+	_, err = newTestBuilder().SetLocation("location").SetCurrentVersionID(1).Build()
 	assert.ErrorContains(t, err, "cannot set current version to unknown version with id 1")
 
 	// Invalid UUID
@@ -99,7 +99,7 @@ func TestBuild_NullAndMissingFields(t *testing.T) {
 
 func TestBuild_DoesNotGrowVersionLog(t *testing.T) {
 	b := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(1)).
 		AddVersion(newTestVersion(1, LastAddedID)).
 		SetCurrentVersionID(LastAddedID)
@@ -118,7 +118,7 @@ func TestBuild_RepeatedBuildsWithVersionExpiry(t *testing.T) {
 	// branch is covered by TestBuild_FromBaseDoesNotGrowVersionLog. Repeated builds
 	// return the same one-entry log.
 	b := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		SetProperties(iceberg.Properties{VersionHistorySizeKey: "1"}).
 		AddSchema(newTestSchema(1)).
 		AddVersion(newTestVersionWithSQL(1, LastAddedID, "select 1")).
@@ -142,7 +142,7 @@ func TestBuild_FromBaseDoesNotGrowVersionLog(t *testing.T) {
 	// The commit-retry case: a builder from existing metadata with a three-entry version
 	// log and a history size of 2, replacing the current version, built more than once.
 	res, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(1)).
 		AddVersion(newTestVersionWithSQL(1, LastAddedID, "select 1")).
 		SetCurrentVersionID(LastAddedID).
@@ -295,7 +295,7 @@ func TestAddVersion_InvalidRepresentation_Validation(t *testing.T) {
 	}
 
 	_, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(invalidVersion).
 		SetCurrentVersionID(1).
@@ -314,7 +314,7 @@ func TestAddVersion_InvalidRepresentation_Validation(t *testing.T) {
 	}
 
 	_, err = newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(invalidDuplicateVersion).
 		SetCurrentVersionID(2).
@@ -342,7 +342,7 @@ func TestAddVersion_EmptySchemas(t *testing.T) {
 func TestSetCurrentVersionID_LastAdded(t *testing.T) {
 	testSchemaID := 1
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(testSchemaID)).
 		AddVersion(newTestVersion(1, LastAddedID)).
 		SetCurrentVersionID(LastAddedID).
@@ -377,7 +377,7 @@ func TestViewVersionHistory_MaintainsCorrectTimeline(t *testing.T) {
 
 	// Build metadata for version V1 as current
 	viewMD, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		SetProperties(iceberg.Properties{ReplaceDropDialectAllowedKey: "true"}).
 		AddSchema(newTestSchema(0)).
 		AddVersion(v1).
@@ -427,7 +427,7 @@ func TestViewMetadataAndUpdates(t *testing.T) {
 	props := iceberg.Properties{"k1": "v1", "k2": "v2"}
 	md, err := newTestBuilder().
 		SetUUID(uuid_).
-		SetLoc("location").
+		SetLocation("location").
 		SetProperties(props).
 		AddSchema(s1).
 		AddSchema(s2).
@@ -471,7 +471,7 @@ func TestSetUUID(t *testing.T) {
 	uuid_ := uuid.New()
 	md, err := newTestBuilder().
 		SetUUID(uuid_).
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(newTestVersion(1, 0)).
 		SetCurrentVersionID(1).
@@ -507,7 +507,7 @@ func TestAddVersion_IDReassignment(t *testing.T) {
 	v2 := newTestVersionWithSQL(1, 0, "select count(*) from ns.tbl")
 	v3 := newTestVersionWithSQL(1, 0, "select count(*) as count from ns.tbl")
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(v1).
 		AddVersion(v2).
@@ -533,7 +533,7 @@ func TestAddVersion_Deduplication(t *testing.T) {
 	v2Updated := newTestVersionWithSQL(1, 0, "select count(*) from ns.tbl", WithTimestampMS(100))
 	v3Updated := newTestVersionWithSQL(1, 0, "select count(*) as count from ns.tbl", WithTimestampMS(10))
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(v1).
 		AddVersion(v2).
@@ -563,7 +563,7 @@ func TestAddVersion_DeduplicationCustomSummary(t *testing.T) {
 		WithVersionSummary(VersionSummary{"key": "val"}),
 	)
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(v1).
 		AddVersion(v2).
@@ -589,7 +589,7 @@ func TestSchemaIDReassignment(t *testing.T) {
 
 	version := newTestVersion(1, 0)
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(s1).
 		AddSchema(s2).
 		AddSchema(s3).
@@ -622,7 +622,7 @@ func TestSchemaDeduplication(t *testing.T) {
 
 	version := newTestVersion(1, 0)
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(s1).
 		AddSchema(s2).
 		AddSchema(s3).
@@ -655,7 +655,7 @@ func TestViewVersionAndSchemaIDReassignment(t *testing.T) {
 	v2 := newTestVersionWithSQL(1, 6, "select count(*) from ns.tbl")
 	v3 := newTestVersionWithSQL(1, 9, "select count(*) as count from ns.tbl")
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(s1).
 		AddSchema(s2).
 		AddSchema(s3).
@@ -698,7 +698,7 @@ func TestAddVersion_MultipleSQLForSameDialect(t *testing.T) {
 		},
 	}
 	_, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(newTestSchema(0)).
 		AddVersion(version).
 		SetCurrentVersionID(1).
@@ -723,7 +723,7 @@ func TestDeduplicationViewVersionByIDAndSchemaID(t *testing.T) {
 	v3 := newTestVersionWithSQL(2, -1, "select count(*) from ns.tbl")
 
 	md, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		AddSchema(s1).
 		AddSchema(s2).
 		AddVersion(v1).
@@ -750,7 +750,7 @@ func TestDroppingDialectFailsByDefault(t *testing.T) {
 	)
 	builder, err := NewMetadataBuilder()
 	require.NoError(t, err)
-	md, err := builder.SetLoc("location").
+	md, err := builder.SetLocation("location").
 		AddSchema(schema).
 		SetCurrentVersion(version, schema).
 		Build()
@@ -776,7 +776,7 @@ func TestDroppingDialectDoesNotFailWhenAllowed(t *testing.T) {
 	)
 	builder, err := NewMetadataBuilder()
 	require.NoError(t, err)
-	md, err := builder.SetLoc("location").
+	md, err := builder.SetLocation("location").
 		AddSchema(schema).
 		SetCurrentVersion(version, schema).
 		SetProperties(iceberg.Properties{ReplaceDropDialectAllowedKey: "true"}).
@@ -832,7 +832,7 @@ func TestCurrentViewVersionIsNeverExpired(t *testing.T) {
 	v2 := newTestVersionWithSQL(2, 0, "select count(*) from ns.tbl")
 	v3 := newTestVersionWithSQL(3, 0, "select count(*) as count from ns.tbl")
 	md, err := stripErr(NewMetadataBuilder()).
-		SetLoc("location").
+		SetLocation("location").
 		SetProperties(props).
 		AddSchema(schema).
 		AddVersion(v1).
@@ -866,7 +866,7 @@ func TestViewVersionHistoryIsCorrectlyRetained(t *testing.T) {
 	v2 := newTestVersionWithSQL(2, 0, "select count(*) from ns.tbl")
 	v3 := newTestVersionWithSQL(3, 0, "select count(*) as count from ns.tbl")
 	md, err := stripErr(NewMetadataBuilder()).
-		SetLoc("location").
+		SetLocation("location").
 		SetProperties(props).
 		AddSchema(schema).
 		AddVersion(v1).

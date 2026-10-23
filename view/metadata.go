@@ -667,7 +667,7 @@ func NewMetadataWithUUID(version *Version, sc *iceberg.Schema, location string, 
 	return builder.
 		SetFormatVersion(formatVersion).
 		SetUUID(viewUUID).
-		SetLoc(location).
+		SetLocation(location).
 		SetProperties(inputProps).
 		SetCurrentVersion(version, sc).
 		Build()
