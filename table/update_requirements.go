@@ -82,7 +82,7 @@ func deriveRequirements(base Metadata, isReplace bool, first Requirement, update
 		add(reqAssertCurrentSchemaID, AssertCurrentSchemaID(base.CurrentSchema().ID))
 	}
 	addDefaultSpec := func() {
-		add(reqAssertDefaultSpecID, AssertDefaultSpecID(base.DefaultPartitionSpec()))
+		add(reqAssertDefaultSpecID, AssertDefaultSpecID(base.DefaultPartitionSpecID()))
 	}
 
 	for _, u := range updates {

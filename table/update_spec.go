@@ -169,7 +169,7 @@ func (us *UpdateSpec) BuildUpdates() ([]Update, []Requirement, error) {
 	updates := make([]Update, 0)
 	requirements := make([]Requirement, 0)
 
-	if us.meta.DefaultPartitionSpec() != newSpec.ID() {
+	if us.meta.DefaultPartitionSpecID() != newSpec.ID() {
 		if us.isNewPartitionSpec(newSpec.ID()) {
 			updates = append(updates, NewAddPartitionSpecUpdate(&newSpec, false))
 			updates = append(updates, NewSetDefaultSpecUpdate(-1))
@@ -194,7 +194,7 @@ func (us *UpdateSpec) BuildUpdates() ([]Update, []Requirement, error) {
 		// remove-only spec evolutions (which assign no new field ids)
 		// can both pass last-assigned-partition-id, so the default
 		// spec id itself must be pinned.
-		requirements = append(requirements, AssertDefaultSpecID(us.txn.tbl.Metadata().DefaultPartitionSpec()))
+		requirements = append(requirements, AssertDefaultSpecID(us.txn.tbl.Metadata().DefaultPartitionSpecID()))
 	}
 
 	return updates, requirements, nil

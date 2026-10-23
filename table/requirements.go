@@ -433,8 +433,8 @@ func (a *assertDefaultSpecId) Validate(meta Metadata) error {
 		return errors.New("Requirement failed: current table metadata does not exist")
 	}
 
-	if meta.DefaultPartitionSpec() != a.DefaultSpecID {
-		return fmt.Errorf("Requirement failed: default spec id has changed: expected %d, found %d", a.DefaultSpecID, meta.DefaultPartitionSpec())
+	if meta.DefaultPartitionSpecID() != a.DefaultSpecID {
+		return fmt.Errorf("Requirement failed: default spec id has changed: expected %d, found %d", a.DefaultSpecID, meta.DefaultPartitionSpecID())
 	}
 
 	return nil
