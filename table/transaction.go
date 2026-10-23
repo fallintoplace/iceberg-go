@@ -593,8 +593,10 @@ func (t *Transaction) RollbackToSnapshot(snapshotID int64) error {
 	return t.apply([]Update{update}, reqs)
 }
 
-func (t *Transaction) UpdateSpec(caseSensitive bool) *UpdateSpec {
-	return NewUpdateSpec(t, caseSensitive)
+// UpdateSpec creates a partition spec update with case-sensitive source lookup.
+// Pass [WithCaseInsensitivePartitionSpecMatching] for case-insensitive names.
+func (t *Transaction) UpdateSpec(opts ...UpdateSpecOption) *UpdateSpec {
+	return NewUpdateSpec(t, opts...)
 }
 
 // ReplaceSortOrder stages order as the table's new default sort order,

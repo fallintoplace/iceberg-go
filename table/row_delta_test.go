@@ -1653,7 +1653,7 @@ func TestRowDeltaWritesRegisteredNonDefaultSpec(t *testing.T) {
 	tbl := newRowDeltaCommitTestTable(t)
 
 	evolveTx := tbl.NewTransaction()
-	require.NoError(t, evolveTx.UpdateSpec(false).
+	require.NoError(t, evolveTx.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).
 		AddField("id", iceberg.IdentityTransform{}, "id_identity").
 		Commit())
 	evolved, err := evolveTx.Commit(t.Context())

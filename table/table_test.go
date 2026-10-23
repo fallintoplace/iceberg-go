@@ -1229,7 +1229,7 @@ func (t *TableWritingTestSuite) TestAddDataFilesMultipleSpecs() {
 	// assertions below.
 	tx := tbl.NewTransaction()
 	t.Require().NoError(tx.SetProperties(iceberg.Properties{table.WritePartitionSummaryLimitKey: "10"}))
-	t.Require().NoError(tx.UpdateSpec(false).AddField("bar", iceberg.IdentityTransform{}, "").Commit())
+	t.Require().NoError(tx.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("bar", iceberg.IdentityTransform{}, "").Commit())
 	tbl, err := tx.Commit(t.ctx)
 	t.Require().NoError(err)
 	newSpec := tbl.Spec()
@@ -3735,6 +3735,6 @@ func TestCreateTableWithUnknownTransformSpec(t *testing.T) {
 	assert.Equal(t, "custom_transform[42]", field.Transform.String())
 
 	// Evolving the spec of such a table is what's blocked.
-	_, err = tbl.NewTransaction().UpdateSpec(false).RemoveField("id_custom").Apply()
+	_, err = tbl.NewTransaction().UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).RemoveField("id_custom").Apply()
 	require.ErrorIs(t, err, iceberg.ErrInvalidTransform)
 }

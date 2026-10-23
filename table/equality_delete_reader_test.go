@@ -511,7 +511,7 @@ func TestEqualityDeleteMatchingAcrossPartitionSpecEvolution(t *testing.T) {
 	// partitioned spec and rename that partition field to create a second spec
 	// with the same field ID and identical-looking partition tuple.
 	tx := tbl.NewTransaction()
-	require.NoError(t, table.NewUpdateSpec(tx, false).
+	require.NoError(t, table.NewUpdateSpec(tx, table.WithCaseInsensitivePartitionSpecMatching()).
 		AddField("data", iceberg.IdentityTransform{}, "data_partition").Commit())
 	var err error
 	tbl, err = tx.Commit(ctx)
@@ -534,7 +534,7 @@ func TestEqualityDeleteMatchingAcrossPartitionSpecEvolution(t *testing.T) {
 	require.NoError(t, err)
 
 	tx = tbl.NewTransaction()
-	require.NoError(t, table.NewUpdateSpec(tx, false).
+	require.NoError(t, table.NewUpdateSpec(tx, table.WithCaseInsensitivePartitionSpecMatching()).
 		RenameField("data_partition", "renamed_data_partition").Commit())
 	tbl, err = tx.Commit(ctx)
 	require.NoError(t, err)

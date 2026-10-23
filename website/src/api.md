@@ -412,7 +412,8 @@ Reorder fields with `MoveFirst`, `MoveBefore`, or `MoveAfter`. Set `allowIncompa
 ### Partition evolution
 
 ```go
-us := table.NewUpdateSpec(txn, true /* caseSensitive */)
+us := table.NewUpdateSpec(txn)
+// For case-insensitive source names: table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 us.AddField("event_time", iceberg.DayTransform{}, "event_day") // sourceColName, transform, partitionFieldName
 us.RemoveField("legacy_partition")
 if err := us.Commit(); err != nil { /* ... */ }

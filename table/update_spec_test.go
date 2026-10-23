@@ -77,15 +77,36 @@ func TestNewUpdateSpecRejectsUnknownTransformInBaseSpec(t *testing.T) {
 	require.NoError(t, err)
 	tbl := table.New([]string{"unknown_spec"}, meta, "", nil, nil)
 
-	_, _, err = table.NewUpdateSpec(tbl.NewTransaction(), false).
+	_, _, err = table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 		AddField("name", iceberg.IdentityTransform{}, "name_identity").
 		BuildUpdates()
 	require.ErrorIs(t, err, iceberg.ErrInvalidTransform)
 	require.ErrorContains(t, err, "custom_transform[42]")
 }
 
+func TestUpdateSpecCaseSensitivityOptions(t *testing.T) {
+	t.Run("default matching is case sensitive", func(t *testing.T) {
+		update := table.NewUpdateSpec(testNonPartitionedTable.NewTransaction())
+		_, _, err := update.AddIdentity("NaMe").BuildUpdates()
+		require.ErrorIs(t, err, iceberg.ErrInvalidSchema)
+	})
+
+	t.Run("case insensitive matching must be explicit", func(t *testing.T) {
+		txn := testNonPartitionedTable.NewTransaction()
+		update := txn.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching())
+		_, _, err := update.AddIdentity("NaMe").BuildUpdates()
+		require.NoError(t, err)
+
+		spec, err := update.Apply()
+		require.NoError(t, err)
+		fields := spec.FieldsBySourceID(2)
+		require.Len(t, fields, 1)
+		require.Equal(t, 2, fields[0].SourceID())
+	})
+}
+
 func TestNewUpdateSpecWithNilTransactionReturnsError(t *testing.T) {
-	err := table.NewUpdateSpec(nil, false).Commit()
+	err := table.NewUpdateSpec(nil, table.WithCaseInsensitivePartitionSpecMatching()).Commit()
 	require.ErrorIs(t, err, table.ErrInvalidMetadata)
 	assert.ErrorContains(t, err, "transaction is nil")
 }
@@ -107,7 +128,7 @@ func TestUpdateSpecPreservesSourceLessVoidTombstone(t *testing.T) {
 	require.NoError(t, err)
 	tbl := table.New([]string{"source_less_void"}, meta, "", nil, nil)
 
-	update := table.NewUpdateSpec(tbl.NewTransaction(), false).
+	update := table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 		AddField("name", iceberg.IdentityTransform{}, "name_identity")
 	_, _, err = update.BuildUpdates()
 	require.NoError(t, err)
@@ -133,7 +154,7 @@ func TestUpdateSpecRejectsTimeTransformConflictWithExistingField(t *testing.T) {
 	require.NoError(t, err)
 	tbl := table.New([]string{"hour_partitioned"}, meta, "", nil, nil)
 
-	updates, reqs, err := table.NewUpdateSpec(tbl.NewTransaction(), false).
+	updates, reqs, err := table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 		AddField("ts", iceberg.DayTransform{}, "ts_day").
 		BuildUpdates()
 
@@ -174,14 +195,14 @@ func TestUpdateSpecAllowsReplacingTimeTransformOnSameSource(t *testing.T) {
 
 	t.Run("remove then add", func(t *testing.T) {
 		tbl := newYearPartitionedTable()
-		assertReplaced(t, table.NewUpdateSpec(tbl.NewTransaction(), false).
+		assertReplaced(t, table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 			RemoveField("ts_year").
 			AddField("ts", iceberg.MonthTransform{}, "ts_month"))
 	})
 
 	t.Run("add then remove", func(t *testing.T) {
 		tbl := newYearPartitionedTable()
-		assertReplaced(t, table.NewUpdateSpec(tbl.NewTransaction(), false).
+		assertReplaced(t, table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 			AddField("ts", iceberg.MonthTransform{}, "ts_month").
 			RemoveField("ts_year"))
 	})
@@ -200,7 +221,7 @@ func TestUpdateSpecReplacesTimeTransformOverV1VoidTombstone(t *testing.T) {
 	require.Equal(t, 1, meta.Version())
 	tbl := table.New([]string{"v1_year_partitioned"}, meta, "", nil, nil)
 
-	specUpdate := table.NewUpdateSpec(tbl.NewTransaction(), false).
+	specUpdate := table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 		RemoveField("ts_year").
 		AddField("ts", iceberg.MonthTransform{}, "ts_month")
 	_, _, err = specUpdate.BuildUpdates()
@@ -269,7 +290,7 @@ func TestParseMetadataAllowsTimeGranularityOverlapInSpec(t *testing.T) {
 func TestUpdateSpecOnInheritedTimeOverlap(t *testing.T) {
 	t.Run("unrelated add is blocked", func(t *testing.T) {
 		tbl := newTimeOverlapTable(t)
-		_, _, err := table.NewUpdateSpec(tbl.NewTransaction(), false).
+		_, _, err := table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 			AddField("id", iceberg.BucketTransform{NumBuckets: 8}, "id_bucket").
 			BuildUpdates()
 		require.ErrorIs(t, err, iceberg.ErrInvalidPartitionSpec)
@@ -279,7 +300,7 @@ func TestUpdateSpecOnInheritedTimeOverlap(t *testing.T) {
 
 	t.Run("unrelated rename is blocked", func(t *testing.T) {
 		tbl := newTimeOverlapTable(t)
-		_, _, err := table.NewUpdateSpec(tbl.NewTransaction(), false).
+		_, _, err := table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 			RenameField("ts_day", "ts_daily").
 			BuildUpdates()
 		require.ErrorIs(t, err, iceberg.ErrInvalidPartitionSpec)
@@ -289,7 +310,7 @@ func TestUpdateSpecOnInheritedTimeOverlap(t *testing.T) {
 	// be staged alongside the change that was blocked.
 	t.Run("removing the redundant field unblocks the rest", func(t *testing.T) {
 		tbl := newTimeOverlapTable(t)
-		specUpdate := table.NewUpdateSpec(tbl.NewTransaction(), false).
+		specUpdate := table.NewUpdateSpec(tbl.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching()).
 			RemoveField("ts_day").
 			AddField("id", iceberg.BucketTransform{NumBuckets: 8}, "id_bucket")
 		_, _, err := specUpdate.BuildUpdates()
@@ -308,7 +329,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add partition fields", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := specUpdate.
 			AddField("ts", iceberg.YearTransform{}, "year_transform").
@@ -342,7 +363,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add partition field case sensitive", func(t *testing.T) {
 		txn = testNonPartitionedTable.NewTransaction()
-		updates := table.NewUpdateSpec(txn, true)
+		updates := table.NewUpdateSpec(txn)
 		_, _, err := updates.
 			AddField("NaMe", iceberg.VoidTransform{}, "name_void").
 			BuildUpdates()
@@ -352,7 +373,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add invalid partition transform field", func(t *testing.T) {
 		txn = testNonPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, true)
+		specUpdate := table.NewUpdateSpec(txn)
 		updates, reqs, err := specUpdate.
 			AddField("name", iceberg.YearTransform{}, "name_year").
 			BuildUpdates()
@@ -370,7 +391,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 		{"truncate", iceberg.TruncateTransform{Width: 0}},
 	} {
 		t.Run("reject invalid "+tt.name+" transform parameters", func(t *testing.T) {
-			specUpdate := table.NewUpdateSpec(testNonPartitionedTable.NewTransaction(), true)
+			specUpdate := table.NewUpdateSpec(testNonPartitionedTable.NewTransaction())
 			updates, reqs, err := specUpdate.
 				AddField("id", tt.transform, "invalid_transform").
 				BuildUpdates()
@@ -387,7 +408,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 		require.NoError(t, err)
 
 		txn = testPartitionedTable.NewTransaction()
-		updates, reqs, err := table.NewUpdateSpec(txn, true).
+		updates, reqs, err := table.NewUpdateSpec(txn).
 			AddField("id", unknown, "id_custom").
 			BuildUpdates()
 		require.ErrorIs(t, err, iceberg.ErrInvalidTransform)
@@ -398,7 +419,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add duplicate partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, true)
+		specUpdate := table.NewUpdateSpec(txn)
 		updates, reqs, err := specUpdate.
 			AddField("id", iceberg.IdentityTransform{}, "id_transform").
 			BuildUpdates()
@@ -410,7 +431,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add already added partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, true)
+		updateSpec := table.NewUpdateSpec(txn)
 
 		updates, reqs, err := updateSpec.
 			AddField("ts", iceberg.YearTransform{}, "year_transform_1").
@@ -424,7 +445,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add duplicate partition field name", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, true)
+		specUpdate := table.NewUpdateSpec(txn)
 
 		updates, reqs, err := specUpdate.
 			AddField("ts", iceberg.YearTransform{}, "year_transform_1").
@@ -439,7 +460,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add conflicted time transform partition field", func(t *testing.T) {
 		txn = testNonPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, true)
+		updateSpec := table.NewUpdateSpec(txn)
 
 		updates, reqs, err := updateSpec.
 			AddField("ts", iceberg.YearTransform{}, "ts_year").
@@ -457,7 +478,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add duplicate partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, true)
+		updateSpec := table.NewUpdateSpec(txn)
 
 		updates, reqs, err := updateSpec.
 			AddField("ts", iceberg.YearTransform{}, "id_identity").
@@ -470,7 +491,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 
 	t.Run("add duplicate partition field name with void transform", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, true)
+		specUpdate := table.NewUpdateSpec(txn)
 
 		updates, reqs, err := specUpdate.
 			AddField("ts", iceberg.VoidTransform{}, "street_void").
@@ -496,7 +517,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 		assert.NoError(t, err)
 
 		tbl := table.New([]string{"geo_geometry"}, metadata, "", nil, nil)
-		specUpdate := table.NewUpdateSpec(tbl.NewTransaction(), true)
+		specUpdate := table.NewUpdateSpec(tbl.NewTransaction())
 
 		updates, reqs, err := specUpdate.
 			AddField("geom", iceberg.IdentityTransform{}, "geom_identity").
@@ -520,7 +541,7 @@ func TestUpdateSpecAddField(t *testing.T) {
 		assert.NoError(t, err)
 
 		tbl := table.New([]string{"geo_geography"}, metadata, "", nil, nil)
-		specUpdate := table.NewUpdateSpec(tbl.NewTransaction(), true)
+		specUpdate := table.NewUpdateSpec(tbl.NewTransaction())
 
 		updates, reqs, err := specUpdate.
 			AddField("geog", iceberg.IdentityTransform{}, "geog_identity").
@@ -541,7 +562,7 @@ func TestUpdateSpecReadsStagedTransactionMetadata(t *testing.T) {
 			AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
 			Commit())
 
-		require.NoError(t, txn.UpdateSpec(false).
+		require.NoError(t, txn.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).
 			AddField("new_col", iceberg.IdentityTransform{}, "new_col_identity").
 			Commit())
 
@@ -571,7 +592,7 @@ func TestUpdateSpecReadsStagedTransactionMetadata(t *testing.T) {
 
 		// An empty target name forces GeneratePartitionFieldName, which must
 		// resolve the source column against the staged schema.
-		specUpdate := txn.UpdateSpec(false)
+		specUpdate := txn.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching())
 		_, _, err := specUpdate.
 			AddField("new_col", iceberg.IdentityTransform{}, "").
 			BuildUpdates()
@@ -598,14 +619,14 @@ func TestUpdateSpecReadsStagedTransactionMetadata(t *testing.T) {
 			Commit())
 
 		// The old name must no longer bind against the staged schema.
-		_, _, err := txn.UpdateSpec(false).
+		_, _, err := txn.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).
 			AddField("name", iceberg.IdentityTransform{}, "name_identity").
 			BuildUpdates()
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "could not bind reference")
 
 		// The new name must bind and produce a partition field on the same source column id.
-		specUpdate := txn.UpdateSpec(false)
+		specUpdate := txn.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching())
 		_, _, err = specUpdate.
 			AddField("full_name", iceberg.IdentityTransform{}, "full_name_identity").
 			BuildUpdates()
@@ -624,7 +645,7 @@ func TestUpdateSpecAddIdentityField(t *testing.T) {
 
 	t.Run("add identity partition fields", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 		updates, reqs, err := specUpdate.
 			AddIdentity("ts").
 			AddIdentity("name").
@@ -661,7 +682,7 @@ func TestUpdateSpecRenameField(t *testing.T) {
 
 	t.Run("rename partition fields", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 		updates, reqs, err := updateSpec.
 			RenameField("id_identity", "new_id_identity").
 			RenameField("street_void", "new_street_void").
@@ -680,7 +701,7 @@ func TestUpdateSpecRenameField(t *testing.T) {
 
 	t.Run("rename recently added partition", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			AddField("ts", iceberg.YearTransform{}, "year_transform").
@@ -694,7 +715,7 @@ func TestUpdateSpecRenameField(t *testing.T) {
 
 	t.Run("rename a partition field that doesn't exist", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			RenameField("non_exist_field", "new_non_exist_field").
@@ -707,7 +728,7 @@ func TestUpdateSpecRenameField(t *testing.T) {
 
 	t.Run("rename a partition field deleted in the same transaction", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			RemoveField("id_identity").
@@ -725,7 +746,7 @@ func TestUpdateSpecRemoveField(t *testing.T) {
 
 	t.Run("remove existing partition fields", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			RemoveField("street_void").
@@ -746,7 +767,7 @@ func TestUpdateSpecRemoveField(t *testing.T) {
 
 	t.Run("remove newly added partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			AddField("ts", iceberg.YearTransform{}, "year_transform").
@@ -760,7 +781,7 @@ func TestUpdateSpecRemoveField(t *testing.T) {
 
 	t.Run("remove renamed partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			RenameField("id_identity", "new_id_identity").
@@ -774,7 +795,7 @@ func TestUpdateSpecRemoveField(t *testing.T) {
 
 	t.Run("remove partition field that doesn't exist", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		updateSpec := table.NewUpdateSpec(txn, false)
+		updateSpec := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := updateSpec.
 			RemoveField("non_exist_field").
@@ -791,7 +812,7 @@ func TestUpdateSpecBuildChanges(t *testing.T) {
 
 	t.Run("build changes on added partition fields", func(t *testing.T) {
 		txn = testNonPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := specUpdate.
 			AddField("ts", iceberg.YearTransform{}, "year_transform").
@@ -812,7 +833,7 @@ func TestUpdateSpecBuildChanges(t *testing.T) {
 
 	t.Run("build changes on removed partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := specUpdate.
 			RemoveField("street_void").
@@ -832,7 +853,7 @@ func TestUpdateSpecBuildChanges(t *testing.T) {
 
 	t.Run("build changes on renamed partition field", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		updates, reqs, err := specUpdate.
 			RenameField("street_void", "new_street_void").
@@ -856,7 +877,7 @@ func TestUpdateSpecRemoveOnlyRaceIsFenced(t *testing.T) {
 
 	// Writer A builds its requirements against the base table.
 	txnA := testPartitionedTable.NewTransaction()
-	_, reqsA, err := table.NewUpdateSpec(txnA, false).
+	_, reqsA, err := table.NewUpdateSpec(txnA, table.WithCaseInsensitivePartitionSpecMatching()).
 		RemoveField("street_void").
 		BuildUpdates()
 	require.NoError(t, err)
@@ -864,7 +885,7 @@ func TestUpdateSpecRemoveOnlyRaceIsFenced(t *testing.T) {
 	// Writer B commits the same remove-only evolution first: the default
 	// spec id moves, the last assigned partition field id does not.
 	txnB := testPartitionedTable.NewTransaction()
-	require.NoError(t, table.NewUpdateSpec(txnB, false).RemoveField("street_void").Commit())
+	require.NoError(t, table.NewUpdateSpec(txnB, table.WithCaseInsensitivePartitionSpecMatching()).RemoveField("street_void").Commit())
 	stagedB, err := txnB.StagedTable()
 	require.NoError(t, err)
 	movedMeta := stagedB.Metadata()
@@ -888,7 +909,7 @@ func TestUpdateSpecCommit(t *testing.T) {
 	t.Run("test commit apply changes on transaction", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
 
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		err := specUpdate.
 			AddField("address.city", iceberg.TruncateTransform{Width: 3}, "").
@@ -925,7 +946,7 @@ func TestUpdateSpecCommit(t *testing.T) {
 	t.Run("test commit with build errors", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
 
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		err := specUpdate.
 			AddField("id", iceberg.IdentityTransform{}, "id_transform").
@@ -937,7 +958,7 @@ func TestUpdateSpecCommit(t *testing.T) {
 	t.Run("test commit with empty updates", func(t *testing.T) {
 		txn = testPartitionedTable.NewTransaction()
 
-		specUpdate := table.NewUpdateSpec(txn, false)
+		specUpdate := table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching())
 
 		err := specUpdate.Commit()
 		assert.Nil(t, err)
@@ -966,7 +987,7 @@ func newPartitionedTableWithVersion(t *testing.T, version string) *table.Table {
 // name.
 func TestUpdateSpecReuseSameUpdate(t *testing.T) {
 	t.Run("re-add without a name keeps the current field ID and name", func(t *testing.T) {
-		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), false)
+		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching())
 		_, _, err := specUpdate.
 			RemoveField("id_identity").
 			AddField("id", iceberg.IdentityTransform{}, "").
@@ -992,7 +1013,7 @@ func TestUpdateSpecReuseSameUpdate(t *testing.T) {
 	})
 
 	t.Run("re-add with the matching name keeps the current field ID", func(t *testing.T) {
-		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), false)
+		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching())
 		_, _, err := specUpdate.
 			RemoveField("id_identity").
 			AddField("id", iceberg.IdentityTransform{}, "id_identity").
@@ -1011,7 +1032,7 @@ func TestUpdateSpecReuseSameUpdate(t *testing.T) {
 	})
 
 	t.Run("re-add with a different name keeps the ID and renames the field", func(t *testing.T) {
-		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), false)
+		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching())
 		_, _, err := specUpdate.
 			RemoveField("id_identity").
 			AddField("id", iceberg.IdentityTransform{}, "id_renamed").
@@ -1032,7 +1053,7 @@ func TestUpdateSpecReuseSameUpdate(t *testing.T) {
 	t.Run("reuse does not bump the field-ID counter for later additions", func(t *testing.T) {
 		// A field added *after* a reuse must get the next sequential ID; if the
 		// reuse path wrongly bumped the counter, this add would skip an ID.
-		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), false)
+		specUpdate := table.NewUpdateSpec(testPartitionedTable.NewTransaction(), table.WithCaseInsensitivePartitionSpecMatching())
 		_, _, err := specUpdate.
 			RemoveField("id_identity").
 			AddField("id", iceberg.IdentityTransform{}, "").                      // reuse -> 1000
@@ -1064,7 +1085,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 	removeAndCommit := func(t *testing.T, tbl *table.Table, name string) *table.StagedTable {
 		t.Helper()
 		txn := tbl.NewTransaction()
-		require.NoError(t, txn.UpdateSpec(false).RemoveField(name).Commit())
+		require.NoError(t, txn.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).RemoveField(name).Commit())
 		staged, err := txn.StagedTable()
 		require.NoError(t, err)
 
@@ -1077,7 +1098,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		require.Empty(t, removed.FieldsBySourceID(1), "field should be gone from the current spec")
 
 		txn2 := staged.NewTransaction()
-		require.NoError(t, txn2.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "").Commit())
+		require.NoError(t, txn2.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "").Commit())
 		staged2, err := txn2.StagedTable()
 		require.NoError(t, err)
 
@@ -1096,7 +1117,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		staged := removeAndCommit(t, testPartitionedTable, "id_identity")
 
 		txn2 := staged.NewTransaction()
-		require.NoError(t, txn2.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "id_identity").Commit())
+		require.NoError(t, txn2.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "id_identity").Commit())
 		staged2, err := txn2.StagedTable()
 		require.NoError(t, err)
 
@@ -1115,7 +1136,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		staged := removeAndCommit(t, testPartitionedTable, "id_identity")
 
 		txn2 := staged.NewTransaction()
-		require.NoError(t, txn2.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "id_renamed").Commit())
+		require.NoError(t, txn2.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "id_renamed").Commit())
 		staged2, err := txn2.StagedTable()
 		require.NoError(t, err)
 
@@ -1131,7 +1152,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		staged := removeAndCommit(t, newPartitionedTableWithVersion(t, "3"), "id_identity")
 
 		txn2 := staged.NewTransaction()
-		require.NoError(t, txn2.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "").Commit())
+		require.NoError(t, txn2.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "").Commit())
 		staged2, err := txn2.StagedTable()
 		require.NoError(t, err)
 
@@ -1149,7 +1170,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		staged := removeAndCommit(t, newPartitionedTableWithVersion(t, "1"), "id_identity")
 
 		txn2 := staged.NewTransaction()
-		require.NoError(t, txn2.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "").Commit())
+		require.NoError(t, txn2.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "").Commit())
 		staged2, err := txn2.StagedTable()
 		require.NoError(t, err)
 
@@ -1182,7 +1203,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 
 		// bucket[8] must NOT match the historical bucket[16]; a fresh ID is used.
 		txnMismatch := staged.NewTransaction()
-		require.NoError(t, txnMismatch.UpdateSpec(false).AddField("id", iceberg.BucketTransform{NumBuckets: 8}, "").Commit())
+		require.NoError(t, txnMismatch.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.BucketTransform{NumBuckets: 8}, "").Commit())
 		mismatchStaged, err := txnMismatch.StagedTable()
 		require.NoError(t, err)
 		mismatchSpec := mismatchStaged.Spec()
@@ -1193,7 +1214,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 
 		// bucket[16] with the same parameter DOES match and reuses 1000.
 		txnMatch := staged.NewTransaction()
-		require.NoError(t, txnMatch.UpdateSpec(false).AddField("id", iceberg.BucketTransform{NumBuckets: 16}, "").Commit())
+		require.NoError(t, txnMatch.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.BucketTransform{NumBuckets: 16}, "").Commit())
 		matchStaged, err := txnMatch.StagedTable()
 		require.NoError(t, err)
 		matchSpec := matchStaged.Spec()
@@ -1211,7 +1232,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		staged := removeAndCommit(t, testPartitionedTable, "id_identity")
 
 		txnAdd := staged.NewTransaction()
-		require.NoError(t, txnAdd.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "id_v2").Commit())
+		require.NoError(t, txnAdd.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "id_v2").Commit())
 		stagedAdd, err := txnAdd.StagedTable()
 		require.NoError(t, err)
 		addedSpec := stagedAdd.Spec()
@@ -1220,12 +1241,12 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		require.Equal(t, iceberg.PartitionDataIDStart+2, added[0].FieldID) // fresh ID 1002
 
 		txnRemove := stagedAdd.NewTransaction()
-		require.NoError(t, txnRemove.UpdateSpec(false).RemoveField("id_v2").Commit())
+		require.NoError(t, txnRemove.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).RemoveField("id_v2").Commit())
 		stagedRemove, err := txnRemove.StagedTable()
 		require.NoError(t, err)
 
 		txnReAdd := stagedRemove.NewTransaction()
-		require.NoError(t, txnReAdd.UpdateSpec(false).AddField("id", iceberg.IdentityTransform{}, "").Commit())
+		require.NoError(t, txnReAdd.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("id", iceberg.IdentityTransform{}, "").Commit())
 		stagedReAdd, err := txnReAdd.StagedTable()
 		require.NoError(t, err)
 
@@ -1250,7 +1271,7 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		require.NoError(t, err)
 
 		txnReAdd := stagedRename.NewTransaction()
-		require.NoError(t, txnReAdd.UpdateSpec(false).AddField("identifier", iceberg.IdentityTransform{}, "").Commit())
+		require.NoError(t, txnReAdd.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).AddField("identifier", iceberg.IdentityTransform{}, "").Commit())
 		stagedReAdd, err := txnReAdd.StagedTable()
 		require.NoError(t, err)
 

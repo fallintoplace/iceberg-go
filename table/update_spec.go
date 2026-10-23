@@ -57,6 +57,17 @@ type UpdateSpec struct {
 }
 type updateSpecOp func() error
 
+// UpdateSpecOption configures partition spec evolution.
+type UpdateSpecOption func(*UpdateSpec)
+
+// WithCaseInsensitivePartitionSpecMatching resolves source columns by name
+// without case sensitivity. Matching is case-sensitive by default.
+func WithCaseInsensitivePartitionSpecMatching() UpdateSpecOption {
+	return func(us *UpdateSpec) {
+		us.caseSensitive = false
+	}
+}
+
 type transformKey struct {
 	SourceId  int
 	Transform string
@@ -69,7 +80,9 @@ type transformKey struct {
 // renaming or dropping an unrelated field. That matches Java's
 // BaseUpdatePartitionSpec, which rejects at construction rather than at commit.
 // Loading such a table is still fine; only evolving its spec is blocked.
-func NewUpdateSpec(t *Transaction, caseSensitive bool) *UpdateSpec {
+// Source-column lookup is case-sensitive by default. Pass
+// [WithCaseInsensitivePartitionSpecMatching] to opt into case-insensitive matching.
+func NewUpdateSpec(t *Transaction, opts ...UpdateSpecOption) *UpdateSpec {
 	us := &UpdateSpec{
 		txn:                   t,
 		nameToField:           make(map[string]iceberg.PartitionField),
@@ -77,9 +90,13 @@ func NewUpdateSpec(t *Transaction, caseSensitive bool) *UpdateSpec {
 		transformToField:      make(map[transformKey]iceberg.PartitionField),
 		transformToAddedField: make(map[transformKey]iceberg.PartitionField),
 		renames:               make(map[string]string),
-		caseSensitive:         caseSensitive,
+		caseSensitive:         true,
 		adds:                  make([]iceberg.PartitionField, 0),
 		deletes:               make(map[int]bool),
+	}
+
+	for _, opt := range opts {
+		opt(us)
 	}
 
 	if t == nil {

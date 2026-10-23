@@ -334,7 +334,7 @@ func (s *SparkIntegrationTestSuite) TestUpdateSpec() {
 	s.Require().NoError(err)
 
 	tx := tbl.NewTransaction()
-	err = tx.UpdateSpec(false).
+	err = tx.UpdateSpec(table.WithCaseInsensitivePartitionSpecMatching()).
 		AddField("baz", iceberg.BucketTransform{NumBuckets: 3}, "").
 		Commit()
 	s.Require().NoError(err)
