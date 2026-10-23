@@ -39,14 +39,14 @@ func TestAssertLastAssignedPartitionIDValidate(t *testing.T) {
 	t.Run("matches metadata last partition id", func(t *testing.T) {
 		meta, err := ParseMetadataBytes([]byte(ExampleTableMetadataV2))
 		require.NoError(t, err)
-		req := AssertLastAssignedPartitionID(*meta.LastPartitionSpecID())
+		req := AssertLastAssignedPartitionID(*meta.LastAssignedPartitionID())
 		assert.NoError(t, req.Validate(meta))
 	})
 
 	t.Run("mismatched last partition id is rejected", func(t *testing.T) {
 		meta, err := ParseMetadataBytes([]byte(ExampleTableMetadataV2))
 		require.NoError(t, err)
-		req := AssertLastAssignedPartitionID(*meta.LastPartitionSpecID() + 1)
+		req := AssertLastAssignedPartitionID(*meta.LastAssignedPartitionID() + 1)
 		err = req.Validate(meta)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "last assigned partition id has changed")

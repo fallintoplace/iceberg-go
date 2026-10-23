@@ -179,7 +179,7 @@ func TestBuildUnpartitionedUnsorted(t *testing.T) {
 	require.Equal(t, 0, meta.CurrentSchema().ID)
 	require.Equal(t, 0, meta.DefaultPartitionSpec())
 	require.Equal(t, 0, meta.DefaultSortOrder())
-	require.Equal(t, 999, *meta.LastPartitionSpecID())
+	require.Equal(t, 999, *meta.LastAssignedPartitionID())
 	require.Equal(t, 3, meta.LastColumnID())
 	require.Equal(t, 0, len(meta.Snapshots()))
 	require.Nil(t, meta.CurrentSnapshot())
@@ -330,7 +330,7 @@ func TestAddRemovePartitionSpec(t *testing.T) {
 		iceberg.AddPartitionFieldBySourceID(3, "z", iceberg.IdentityTransform{}, builder.schemaList[0], &i2))
 	require.NoError(t, err)
 	require.Equal(t, metadata.DefaultPartitionSpec(), 0)
-	require.Equal(t, *metadata.LastPartitionSpecID(), i2)
+	require.Equal(t, *metadata.LastAssignedPartitionID(), i2)
 	found := false
 	for _, part := range metadata.PartitionSpecs() {
 		if part.ID() == 1 {
@@ -390,8 +390,8 @@ func TestAddPartitionSpecAllocatesAfterHistoricalFieldID(t *testing.T) {
 			require.NotNil(t, added)
 			require.Equal(t, 1, added.NumFields())
 			assert.Equal(t, 1001, added.Field(0).FieldID)
-			require.NotNil(t, rebuilt.LastPartitionSpecID())
-			assert.Equal(t, 1001, *rebuilt.LastPartitionSpecID())
+			require.NotNil(t, rebuilt.LastAssignedPartitionID())
+			assert.Equal(t, 1001, *rebuilt.LastAssignedPartitionID())
 		})
 	}
 }
@@ -411,8 +411,8 @@ func TestAddEmptyPartitionSpecRepairsStaleLastPartitionID(t *testing.T) {
 
 	rebuilt, err := builder.Build()
 	require.NoError(t, err)
-	require.NotNil(t, rebuilt.LastPartitionSpecID())
-	assert.Equal(t, 1000, *rebuilt.LastPartitionSpecID())
+	require.NotNil(t, rebuilt.LastAssignedPartitionID())
+	assert.Equal(t, 1000, *rebuilt.LastAssignedPartitionID())
 }
 
 func TestRemovePartitionSpecsNoMatchDoesNotUpdate(t *testing.T) {
@@ -547,7 +547,7 @@ func TestSetDefaultPartitionSpec(t *testing.T) {
 
 	require.Equal(t, metadata.DefaultPartitionSpec(), 1)
 	require.True(t, expectedSpec.Equals(metadata.PartitionSpec()), fmt.Sprintf("expected partition spec to match added spec %s, %s", spew.Sdump(expectedSpec), spew.Sdump(metadata.PartitionSpec())))
-	require.Equal(t, *metadata.LastPartitionSpecID(), 1001)
+	require.Equal(t, *metadata.LastAssignedPartitionID(), 1001)
 }
 
 func TestSetExistingDefaultPartitionSpec(t *testing.T) {

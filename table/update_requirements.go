@@ -153,7 +153,7 @@ func nonMainBranches(base Metadata) []string {
 // lastAssignedPartitionID falls back to the ID before the first partition
 // field when base has none, as UpdateSpec does.
 func lastAssignedPartitionID(base Metadata) int {
-	if id := base.LastPartitionSpecID(); id != nil {
+	if id := base.LastAssignedPartitionID(); id != nil {
 		return *id
 	}
 

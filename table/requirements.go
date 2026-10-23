@@ -402,7 +402,7 @@ func (a *assertLastAssignedPartitionId) Validate(meta Metadata) error {
 		return errors.New("Requirement failed: current table metadata does not exist")
 	}
 
-	lastPartitionSpecID := meta.LastPartitionSpecID()
+	lastPartitionSpecID := meta.LastAssignedPartitionID()
 	if lastPartitionSpecID == nil {
 		return errors.New("requirement failed: last assigned partition id is missing")
 	}

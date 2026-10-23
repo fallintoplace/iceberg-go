@@ -77,10 +77,10 @@ func TestParseMetadataBytesAssignsMissingPartitionFieldIDs(t *testing.T) {
 			parsedSpec := parsed.PartitionSpec()
 			assert.Equal(t, tt.wantFieldID, parsedSpec.Field(0).FieldID)
 			if !tt.hasLastFieldID {
-				assert.Nil(t, parsed.LastPartitionSpecID())
+				assert.Nil(t, parsed.LastAssignedPartitionID())
 			} else {
-				require.NotNil(t, parsed.LastPartitionSpecID())
-				assert.Equal(t, tt.wantLastFieldID, *parsed.LastPartitionSpecID())
+				require.NotNil(t, parsed.LastAssignedPartitionID())
+				assert.Equal(t, tt.wantLastFieldID, *parsed.LastAssignedPartitionID())
 			}
 		})
 	}
@@ -99,8 +99,8 @@ func TestParseMetadataBytesPreservesStaleLastPartitionIDForCommit(t *testing.T) 
 
 	parsed, err := ParseMetadataBytes([]byte(data))
 	require.NoError(t, err)
-	require.NotNil(t, parsed.LastPartitionSpecID())
-	assert.Equal(t, 999, *parsed.LastPartitionSpecID())
+	require.NotNil(t, parsed.LastAssignedPartitionID())
+	assert.Equal(t, 999, *parsed.LastAssignedPartitionID())
 
 	update := NewUpdateSpec(New(nil, parsed, "", nil, nil).NewTransaction(), false).
 		AddField("x", iceberg.BucketTransform{NumBuckets: 16}, "x_bucket")

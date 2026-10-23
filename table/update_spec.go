@@ -124,7 +124,7 @@ func NewUpdateSpec(t *Transaction, caseSensitive bool) *UpdateSpec {
 	us.schema = stagedMeta.CurrentSchema()
 	us.nameToField = nameToField
 	us.transformToField = transformToField
-	us.lastAssignedFieldId = partitionFieldIDFloor(us.meta.LastPartitionSpecID(), us.meta.PartitionSpecs())
+	us.lastAssignedFieldId = partitionFieldIDFloor(us.meta.LastAssignedPartitionID(), us.meta.PartitionSpecs())
 
 	return us
 }
@@ -181,7 +181,7 @@ func (us *UpdateSpec) BuildUpdates() ([]Update, []Requirement, error) {
 		// UpdateSpec.Commit() in the transaction then asserts the same value,
 		// so they collapse to one via the ordinary semantic-key dedupe instead
 		// of reaching the catalog as several contradictory values.
-		requiredLastAssignedPartitionID := us.txn.tbl.Metadata().LastPartitionSpecID()
+		requiredLastAssignedPartitionID := us.txn.tbl.Metadata().LastAssignedPartitionID()
 		if requiredLastAssignedPartitionID == nil {
 			// Mirror the constructor's guard: an unpartitioned table may not
 			// have a last-assigned partition id yet.

@@ -869,7 +869,7 @@ func TestUpdateSpecRemoveOnlyRaceIsFenced(t *testing.T) {
 	require.NoError(t, err)
 	movedMeta := stagedB.Metadata()
 	require.NotEqual(t, testPartitionedTable.Metadata().DefaultPartitionSpec(), movedMeta.DefaultPartitionSpec())
-	require.Equal(t, testPartitionedTable.Metadata().LastPartitionSpecID(), movedMeta.LastPartitionSpecID())
+	require.Equal(t, testPartitionedTable.Metadata().LastAssignedPartitionID(), movedMeta.LastAssignedPartitionID())
 
 	// Validating A's requirements against B's committed state must fail on
 	// exactly the default-spec fence.
@@ -1088,8 +1088,8 @@ func TestUpdateSpecReuseHistoricalFieldID(t *testing.T) {
 		assert.Equal(t, "id_identity", reAdded[0].Name)
 		assert.Equal(t, iceberg.IdentityTransform{}, reAdded[0].Transform)
 		// The reuse must not advance the table's last-assigned partition ID.
-		require.NotNil(t, staged2.Metadata().LastPartitionSpecID())
-		assert.Equal(t, iceberg.PartitionDataIDStart+1, *staged2.Metadata().LastPartitionSpecID())
+		require.NotNil(t, staged2.Metadata().LastAssignedPartitionID())
+		assert.Equal(t, iceberg.PartitionDataIDStart+1, *staged2.Metadata().LastAssignedPartitionID())
 	})
 
 	t.Run("re-add with the matching name reuses the historical field ID", func(t *testing.T) {

@@ -266,7 +266,7 @@ func TestRequirementsForReplaceTable(t *testing.T) {
 
 type noLastPartitionIDMetadata struct{ table.Metadata }
 
-func (noLastPartitionIDMetadata) LastPartitionSpecID() *int { return nil }
+func (noLastPartitionIDMetadata) LastAssignedPartitionID() *int { return nil }
 
 func TestRequirementsForUpdateTableMissingLastPartitionID(t *testing.T) {
 	meta := noLastPartitionIDMetadata{requirementsTestMetadata(t)}

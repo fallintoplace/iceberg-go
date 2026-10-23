@@ -344,9 +344,9 @@ type Metadata interface {
 	// DefaultPartitionSpec is the ID of the current spec that writerFactory should
 	// use by default.
 	DefaultPartitionSpec() int
-	// LastPartitionSpecID returns the persisted last assigned partition field ID,
+	// LastAssignedPartitionID returns the persisted last assigned partition field ID,
 	// which may be stale relative to partition spec history.
-	LastPartitionSpecID() *int
+	LastAssignedPartitionID() *int
 	// Snapshots returns the list of valid snapshots. Valid snapshots are
 	// snapshots for which all data files exist in the file system. A data
 	// file must not be deleted from the file system until the last snapshot
@@ -562,7 +562,7 @@ func MetadataBuilderFromBase(metadata Metadata, currentFileLocation string) (*Me
 		b.currentSchemaID = currentSchema.ID
 		b.specs = slices.Clone(metadata.PartitionSpecs())
 		b.defaultSpecID = metadata.DefaultPartitionSpec()
-		b.lastPartitionID = metadata.LastPartitionSpecID()
+		b.lastPartitionID = metadata.LastAssignedPartitionID()
 		b.props = maps.Clone(metadata.Properties())
 		b.snapshotList = slices.Clone(metadata.Snapshots())
 		b.snapshotIndex = buildSnapshotIndex(b.snapshotList)
@@ -2599,7 +2599,7 @@ func (c *commonMetadata) PartitionSpecByID(id int) *iceberg.PartitionSpec {
 	return nil
 }
 
-func (c *commonMetadata) LastPartitionSpecID() *int {
+func (c *commonMetadata) LastAssignedPartitionID() *int {
 	if c.LastPartitionID == nil {
 		return nil
 	}

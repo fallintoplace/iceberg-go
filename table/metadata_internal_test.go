@@ -235,7 +235,7 @@ func TestMetadataV1Parsing(t *testing.T) {
 	}), meta.PartitionSpec())
 
 	assert.Equal(t, 0, meta.DefaultPartitionSpec())
-	assert.Equal(t, 1000, *meta.LastPartitionSpecID())
+	assert.Equal(t, 1000, *meta.LastAssignedPartitionID())
 	assert.Nil(t, data.CurrentSnapshotID)
 	assert.Nil(t, meta.CurrentSnapshot())
 	assert.Len(t, meta.Snapshots(), 1)
