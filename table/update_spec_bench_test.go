@@ -73,7 +73,7 @@ func BenchmarkUpdateSpecBuildUpdates(b *testing.B) {
 			b.ResetTimer()
 
 			for range b.N {
-				update := NewUpdateSpec(txn, false)
+				update := NewUpdateSpec(txn, WithCaseInsensitivePartitionSpecMatching())
 				for i := tc.existingFields; i < tc.existingFields+tc.addedFields; i++ {
 					update.AddField(sourceNames[i], iceberg.IdentityTransform{},
 						addedNames[i-tc.existingFields])

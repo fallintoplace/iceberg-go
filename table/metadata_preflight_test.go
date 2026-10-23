@@ -102,7 +102,7 @@ func TestParseMetadataBytesPreservesStaleLastPartitionIDForCommit(t *testing.T) 
 	require.NotNil(t, parsed.LastPartitionSpecID())
 	assert.Equal(t, 999, *parsed.LastPartitionSpecID())
 
-	update := NewUpdateSpec(New(nil, parsed, "", nil, nil).NewTransaction(), false).
+	update := NewUpdateSpec(New(nil, parsed, "", nil, nil).NewTransaction(), WithCaseInsensitivePartitionSpecMatching()).
 		AddField("x", iceberg.BucketTransform{NumBuckets: 16}, "x_bucket")
 	_, requirements, err := update.BuildUpdates()
 	require.NoError(t, err)

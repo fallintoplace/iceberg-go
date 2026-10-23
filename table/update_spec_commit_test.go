@@ -96,10 +96,10 @@ func TestChainedUpdateSpecCommitsToCatalog(t *testing.T) {
 		require.NotNil(t, baseLastPartitionID)
 
 		txn := tbl.NewTransaction()
-		require.NoError(t, txn.UpdateSpec(false).
+		require.NoError(t, txn.UpdateSpec(WithCaseInsensitivePartitionSpecMatching()).
 			AddField("id", iceberg.IdentityTransform{}, "id_identity").
 			Commit())
-		require.NoError(t, txn.UpdateSpec(false).
+		require.NoError(t, txn.UpdateSpec(WithCaseInsensitivePartitionSpecMatching()).
 			AddField("id", iceberg.BucketTransform{NumBuckets: 4}, "id_bucket").
 			Commit())
 
@@ -148,10 +148,10 @@ func TestChainedUpdateSpecCommitsToCatalog(t *testing.T) {
 		cat.metadata = tbl.Metadata()
 
 		txn := tbl.NewTransaction()
-		require.NoError(t, txn.UpdateSpec(false).
+		require.NoError(t, txn.UpdateSpec(WithCaseInsensitivePartitionSpecMatching()).
 			AddField("id", iceberg.IdentityTransform{}, "id_identity").
 			Commit())
-		require.NoError(t, txn.UpdateSpec(false).
+		require.NoError(t, txn.UpdateSpec(WithCaseInsensitivePartitionSpecMatching()).
 			AddField("id", iceberg.BucketTransform{NumBuckets: 4}, "id_bucket").
 			Commit())
 

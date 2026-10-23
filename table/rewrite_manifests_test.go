@@ -654,7 +654,7 @@ func TestRewriteManifestsSpecIDFilter(t *testing.T) {
 
 			// Evolve the spec, then add a file so it lands in a manifest of the new spec.
 			txn := tbl.NewTransaction()
-			require.NoError(t, table.NewUpdateSpec(txn, false).
+			require.NoError(t, table.NewUpdateSpec(txn, table.WithCaseInsensitivePartitionSpecMatching()).
 				AddField("id", iceberg.IdentityTransform{}, "id_part").Commit())
 			tbl, err = txn.Commit(ctx)
 			require.NoError(t, err)

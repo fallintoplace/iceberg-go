@@ -1067,7 +1067,7 @@ func TestNewTransactionOnBranchKeepsLegacySignatureAndFailsOnUse(t *testing.T) {
 	})
 
 	t.Run("update spec returns init error", func(t *testing.T) {
-		err := txn.UpdateSpec(true).AddIdentity("id").Commit()
+		err := txn.UpdateSpec().AddIdentity("id").Commit()
 		require.ErrorContains(t, err, "current schema is missing")
 	})
 
@@ -1221,7 +1221,7 @@ func TestTransactionEntryPointsRejectNilAndBrokenTransaction(t *testing.T) {
 
 			return err
 		}},
-		{"UpdateSpec", func(txn *Transaction) error { return txn.UpdateSpec(true).AddIdentity("id").Commit() }},
+		{"UpdateSpec", func(txn *Transaction) error { return txn.UpdateSpec().AddIdentity("id").Commit() }},
 		{"UpdateSchema", func(txn *Transaction) error {
 			return txn.UpdateSchema(true, false).
 				AddColumn([]string{"new_col"}, iceberg.PrimitiveTypes.String, "", false, nil).
