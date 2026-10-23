@@ -1320,7 +1320,7 @@ func (b *MetadataBuilder) validateLastColumnID() error {
 	return nil
 }
 
-func (b *MetadataBuilder) SetLoc(loc string) error {
+func (b *MetadataBuilder) SetLocation(loc string) error {
 	if b.loc == loc {
 		return nil
 	}
@@ -3696,7 +3696,7 @@ func NewMetadataWithUUID(sc *iceberg.Schema, partitions *iceberg.PartitionSpec, 
 		return nil, err
 	}
 
-	if err = builder.SetLoc(location); err != nil {
+	if err = builder.SetLocation(location); err != nil {
 		return nil, err
 	}
 

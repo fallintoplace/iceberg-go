@@ -99,7 +99,7 @@ func newPartitionValidationBenchmarkTransaction(b *testing.B, specCount, fieldCo
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err = builder.SetLoc("mem://partition-validation-benchmark"); err != nil {
+	if err = builder.SetLocation("mem://partition-validation-benchmark"); err != nil {
 		b.Fatal(err)
 	}
 	if err = builder.AddSchema(schema); err != nil {

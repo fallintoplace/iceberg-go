@@ -596,7 +596,7 @@ func NewSetLocationUpdate(loc string) Update {
 }
 
 func (u *setLocationUpdate) Apply(builder *MetadataBuilder) error {
-	return builder.SetLoc(u.Location)
+	return builder.SetLocation(u.Location)
 }
 
 type setPropertiesUpdate struct {

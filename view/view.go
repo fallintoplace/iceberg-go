@@ -195,7 +195,7 @@ func createView(
 		return nil, err
 	}
 	viewMD, err := builder.
-		SetLoc(loc).
+		SetLocation(loc).
 		SetCurrentVersion(
 			viewVersion,
 			schema,

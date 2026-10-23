@@ -733,7 +733,7 @@ func TestMetadataV3Builder(t *testing.T) {
 	builder, err := NewMetadataBuilder(3)
 	require.NoError(t, err)
 	builder.SetUUID(uuid.New())
-	builder.SetLoc("s3://test/location")
+	builder.SetLocation("s3://test/location")
 	builder.SetLastUpdatedMS()
 
 	require.NoError(t, builder.AddSchema(schema))

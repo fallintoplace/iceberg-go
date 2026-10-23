@@ -241,9 +241,9 @@ func (b *MetadataBuilder) SetUUID(newUUID uuid.UUID) *MetadataBuilder {
 	return b
 }
 
-// SetLoc sets the function's base location, used to create metadata
+// SetLocation sets the function's base location, used to create metadata
 // file locations.
-func (b *MetadataBuilder) SetLoc(loc string) *MetadataBuilder {
+func (b *MetadataBuilder) SetLocation(loc string) *MetadataBuilder {
 	if b.err != nil || b.loc == loc {
 		return b
 	}

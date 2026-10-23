@@ -84,7 +84,7 @@ func builderWithoutChanges(formatVersion int) MetadataBuilder {
 	if err != nil {
 		panic(err)
 	}
-	if err = builder.SetLoc("s3://bucket/test/location"); err != nil {
+	if err = builder.SetLocation("s3://bucket/test/location"); err != nil {
 		panic(err)
 	}
 	if err = builder.AddSchema(&tableSchema); err != nil {
@@ -127,7 +127,7 @@ func freshMetadataBuilder(t *testing.T, formatVersion int) *MetadataBuilder {
 
 	builder, err := NewMetadataBuilder(formatVersion)
 	require.NoError(t, err)
-	require.NoError(t, builder.SetLoc("s3://bucket/test/location"))
+	require.NoError(t, builder.SetLocation("s3://bucket/test/location"))
 	require.NoError(t, builder.AddSchema(&tableSchema))
 	require.NoError(t, builder.SetCurrentSchemaID(-1))
 	require.NoError(t, builder.AddSortOrder(&sortOrder))
@@ -167,7 +167,7 @@ func TestBuildUnpartitionedUnsorted(t *testing.T) {
 	require.NoError(t, builder.SetDefaultSortOrderID(-1))
 	require.NoError(t, builder.AddPartitionSpec(&partitionSpec, true))
 	require.NoError(t, builder.SetDefaultSpecID(-1))
-	require.NoError(t, builder.SetLoc(TestLocation))
+	require.NoError(t, builder.SetLocation(TestLocation))
 
 	meta, err := builder.Build()
 
@@ -640,7 +640,7 @@ func TestAddSortOrderReuseDoesNotDuplicateUpdate(t *testing.T) {
 	buildBase := func(t *testing.T) Metadata {
 		builder, err := NewMetadataBuilder(2)
 		require.NoError(t, err)
-		require.NoError(t, builder.SetLoc("s3://bucket/test/location"))
+		require.NoError(t, builder.SetLocation("s3://bucket/test/location"))
 		require.NoError(t, builder.AddSchema(&tableSchema))
 		require.NoError(t, builder.SetCurrentSchemaID(-1))
 		unsorted := UnsortedSortOrder
@@ -2287,7 +2287,7 @@ func TestNewMetadataChanges(t *testing.T) {
 
 	builder, err := NewMetadataBuilder(1)
 	require.NoError(t, err)
-	require.NoError(t, builder.SetLoc("file:///tmp/iceberg-test"))
+	require.NoError(t, builder.SetLocation("file:///tmp/iceberg-test"))
 	require.NoError(t, builder.AddSchema(&tableSchema))
 	require.NoError(t, builder.SetCurrentSchemaID(-1))
 	require.NoError(t, builder.AddPartitionSpec(&partitionSpec, true))
@@ -2337,7 +2337,7 @@ func TestNewMetadataChangesUnpartitionedUnsorted(t *testing.T) {
 
 	builder, err := NewMetadataBuilder(1)
 	require.NoError(t, err)
-	require.NoError(t, builder.SetLoc("file:///tmp/iceberg-test"))
+	require.NoError(t, builder.SetLocation("file:///tmp/iceberg-test"))
 	require.NoError(t, builder.AddSchema(&tableSchema))
 	require.NoError(t, builder.SetCurrentSchemaID(-1))
 	require.NoError(t, builder.AddPartitionSpec(&partitionSpec, true))
@@ -2430,7 +2430,7 @@ func TestNoMetadataLogForCreateTable(t *testing.T) {
 
 func TestNoMetadataLogEntryForNoPreviousLocation(t *testing.T) {
 	builder := builderWithoutChanges(2)
-	require.NoError(t, builder.SetLoc("file:///tmp/iceberg-test"))
+	require.NoError(t, builder.SetLocation("file:///tmp/iceberg-test"))
 	metadata, err := builder.Build()
 	require.NoError(t, err)
 	require.NotNil(t, metadata)
@@ -3713,7 +3713,7 @@ func TestSetFormatVersionValidatesLastColumnID(t *testing.T) {
 
 	builder, err := NewMetadataBuilder(1)
 	require.NoError(t, err)
-	require.NoError(t, builder.SetLoc("s3://bucket/test"))
+	require.NoError(t, builder.SetLocation("s3://bucket/test"))
 	require.NoError(t, builder.AddSchema(tableSchema))
 	require.NoError(t, builder.SetCurrentSchemaID(-1))
 	require.NoError(t, builder.AddSortOrder(&UnsortedSortOrder))

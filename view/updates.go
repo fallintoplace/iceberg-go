@@ -194,7 +194,7 @@ func NewSetLocationUpdate(loc string) *setLocationUpdate {
 }
 
 func (u *setLocationUpdate) Apply(builder *MetadataBuilder) error {
-	builder.SetLoc(u.Location)
+	builder.SetLocation(u.Location)
 
 	return builder.Err()
 }

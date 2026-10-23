@@ -824,7 +824,7 @@ func TestCheckNoUnknownTransformInSpecs(t *testing.T) {
 	build := func(t *testing.T, specs ...iceberg.PartitionSpec) Metadata {
 		builder, err := NewMetadataBuilder(2)
 		require.NoError(t, err)
-		require.NoError(t, builder.SetLoc("s3://bucket/test/location"))
+		require.NoError(t, builder.SetLocation("s3://bucket/test/location"))
 		require.NoError(t, builder.AddSchema(&tableSchema))
 		require.NoError(t, builder.SetCurrentSchemaID(-1))
 		sortOrder := sortOrder()

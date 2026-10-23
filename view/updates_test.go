@@ -162,7 +162,7 @@ func TestMetadataBuilderPropertyChangesCopyInputs(t *testing.T) {
 	removals := []string{"old-property"}
 
 	base, err := newTestBuilder().
-		SetLoc("location").
+		SetLocation("location").
 		SetProperties(iceberg.Properties{"old-property": "value"}).
 		AddSchema(newTestSchema(0)).
 		AddVersion(newTestVersion(1, 0)).
