@@ -1070,8 +1070,8 @@ func (m *ManifestTestSuite) TestReadManifestListV1() {
 	m.Equal(1, list[0].Version())
 	m.EqualValues(7989, list[0].Length())
 	m.Equal(ManifestContentData, list[0].ManifestContent())
-	m.Zero(list[0].SequenceNum())
-	m.Zero(list[0].MinSequenceNum())
+	m.Zero(list[0].SequenceNumber())
+	m.Zero(list[0].MinSequenceNumber())
 	m.EqualValues(9182715666859759686, list[0].SnapshotID())
 	m.EqualValues(3, list[0].AddedDataFiles())
 	m.True(list[0].HasAddedFiles())
@@ -1101,8 +1101,8 @@ func (m *ManifestTestSuite) TestReadManifestListV2() {
 	m.Equal(2, list[0].Version())
 	m.EqualValues(7989, list[0].Length())
 	m.Equal(ManifestContentDeletes, list[0].ManifestContent())
-	m.EqualValues(3, list[0].SequenceNum())
-	m.EqualValues(3, list[0].MinSequenceNum())
+	m.EqualValues(3, list[0].SequenceNumber())
+	m.EqualValues(3, list[0].MinSequenceNumber())
 	m.EqualValues(9182715666859759686, list[0].SnapshotID())
 	m.EqualValues(3, list[0].AddedDataFiles())
 	m.True(list[0].HasAddedFiles())
@@ -1131,8 +1131,8 @@ func (m *ManifestTestSuite) TestReadManifestListV3() {
 	m.Equal(3, list[0].Version())
 	m.EqualValues(7989, list[0].Length())
 	m.Equal(ManifestContentData, list[0].ManifestContent())
-	m.EqualValues(5, list[0].SequenceNum())
-	m.EqualValues(5, list[0].MinSequenceNum())
+	m.EqualValues(5, list[0].SequenceNumber())
+	m.EqualValues(5, list[0].MinSequenceNumber())
 
 	m.EqualValues(9182715666859759686, list[0].SnapshotID())
 	m.EqualValues(3, list[0].AddedDataFiles())
@@ -4212,8 +4212,8 @@ func (m *ManifestTestSuite) TestV2ManifestListAcceptsV1Manifests() {
 	m.Equal(manifestFileRecordsV1[0].FilePath(), entry.FilePath())
 	m.Equal(manifestFileRecordsV1[0].Length(), entry.Length())
 	m.Equal(ManifestContentData, entry.ManifestContent(), "v1 inheritance: content must be data")
-	m.Equal(int64(0), entry.SequenceNum(), "v1 inheritance: sequence_number must be 0")
-	m.Equal(int64(0), entry.MinSequenceNum(), "v1 inheritance: min_sequence_number must be 0")
+	m.Equal(int64(0), entry.SequenceNumber(), "v1 inheritance: sequence_number must be 0")
+	m.Equal(int64(0), entry.MinSequenceNumber(), "v1 inheritance: min_sequence_number must be 0")
 	m.Equal(manifestFileRecordsV1[0].AddedRows(), entry.AddedRows())
 }
 
@@ -4245,8 +4245,8 @@ func (m *ManifestTestSuite) TestManifestWriterPreservesMinSequenceNumberZero() {
 	var manifestBuf bytes.Buffer
 	mf, err := WriteManifest("carried-forward-v1.avro", &manifestBuf, 2, partitionSpec, testSchema, snapshotID, entries)
 	m.Require().NoError(err)
-	m.Equal(int64(0), mf.MinSequenceNum(), "min_sequence_number must be 0 for v1-inherited live entries")
-	m.Equal(int64(-1), mf.SequenceNum(), "manifest-level sequence_number is assigned by the manifest list writer")
+	m.Equal(int64(0), mf.MinSequenceNumber(), "min_sequence_number must be 0 for v1-inherited live entries")
+	m.Equal(int64(-1), mf.SequenceNumber(), "manifest-level sequence_number is assigned by the manifest list writer")
 
 	commitSeq := int64(42)
 	var listBuf bytes.Buffer
@@ -4256,8 +4256,8 @@ func (m *ManifestTestSuite) TestManifestWriterPreservesMinSequenceNumberZero() {
 	list, err := ReadManifestList(&listBuf)
 	m.Require().NoError(err)
 	m.Require().Len(list, 1)
-	m.Equal(int64(0), list[0].MinSequenceNum(), "manifest list must preserve min_sequence_number 0")
-	m.Equal(commitSeq, list[0].SequenceNum(), "manifest list assigns sequence_number from the commit")
+	m.Equal(int64(0), list[0].MinSequenceNumber(), "manifest list must preserve min_sequence_number 0")
+	m.Equal(commitSeq, list[0].SequenceNumber(), "manifest list assigns sequence_number from the commit")
 }
 
 // TestV3ManifestListAcceptsV1AndV2Manifests verifies that a v3 manifest list
@@ -4281,8 +4281,8 @@ func (m *ManifestTestSuite) TestV3ManifestListAcceptsV1AndV2Manifests() {
 	v1Entry := got[0]
 	m.Equal(manifestFileRecordsV1[0].FilePath(), v1Entry.FilePath())
 	m.Equal(ManifestContentData, v1Entry.ManifestContent())
-	m.Equal(int64(0), v1Entry.SequenceNum())
-	m.Equal(int64(0), v1Entry.MinSequenceNum())
+	m.Equal(int64(0), v1Entry.SequenceNumber())
+	m.Equal(int64(0), v1Entry.MinSequenceNumber())
 	m.Require().NotNil(v1Entry.FirstRowID(), "v3 list must assign first_row_id for data manifests")
 	m.Equal(firstRowID, *v1Entry.FirstRowID())
 
@@ -4920,8 +4920,8 @@ func TestToManifestFileInheritsWriterContent(t *testing.T) {
 			assert.Equal(t, int64(len(data)), mf.Length())
 			assert.Equal(t, int32(1), mf.PartitionSpecID())
 			assert.Equal(t, int64(1234), mf.SnapshotID())
-			assert.Equal(t, int64(-1), mf.SequenceNum())
-			assert.Equal(t, int64(1), mf.MinSequenceNum())
+			assert.Equal(t, int64(-1), mf.SequenceNumber())
+			assert.Equal(t, int64(1), mf.MinSequenceNumber())
 			assert.Equal(t, int32(1), mf.AddedDataFiles())
 			assert.Zero(t, mf.ExistingDataFiles())
 			assert.Zero(t, mf.DeletedDataFiles())

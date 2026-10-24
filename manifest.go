@@ -384,8 +384,8 @@ func (m *manifestFile) DeletedDataFiles() int32          { return m.DeletedFiles
 func (m *manifestFile) AddedRows() int64                 { return m.AddedRowsCount }
 func (m *manifestFile) ExistingRows() int64              { return m.ExistingRowsCount }
 func (m *manifestFile) DeletedRows() int64               { return m.DeletedRowsCount }
-func (m *manifestFile) SequenceNum() int64               { return m.SeqNumber }
-func (m *manifestFile) MinSequenceNum() int64            { return m.MinSeqNumber }
+func (m *manifestFile) SequenceNumber() int64               { return m.SeqNumber }
+func (m *manifestFile) MinSequenceNumber() int64            { return m.MinSeqNumber }
 func (m *manifestFile) KeyMetadata() []byte {
 	if m.Key == nil {
 		return nil
@@ -547,12 +547,12 @@ type ManifestFile interface {
 	// DeletedRows returns the number of rows in all files of the manifest
 	// which have status EntryStatusDELETED.
 	DeletedRows() int64
-	// SequenceNum returns the sequence number when this manifest was
+	// SequenceNumber returns the sequence number when this manifest was
 	// added to the table. Will be 0 for v1 manifest lists.
-	SequenceNum() int64
-	// MinSequenceNum is the minimum data sequence number of all live data
+	SequenceNumber() int64
+	// MinSequenceNumber is the minimum data sequence number of all live data
 	// or delete files in the manifest. Will be 0 for v1 manifest lists.
-	MinSequenceNum() int64
+	MinSequenceNumber() int64
 	// KeyMetadata returns implementation-specific key metadata for encryption
 	// if it exists in the manifest list.
 	KeyMetadata() []byte
@@ -3024,7 +3024,7 @@ func (m *manifestEntry) inherit(manifest ManifestFile) {
 		m.Snapshot = &snap
 	}
 
-	manifestSequenceNum := manifest.SequenceNum()
+	manifestSequenceNum := manifest.SequenceNumber()
 	if manifestSequenceNum != -1 {
 		if m.SeqNum == nil && (manifestSequenceNum == initialSequenceNumber || m.EntryStatus == EntryStatusADDED) {
 			m.SeqNum = &manifestSequenceNum
