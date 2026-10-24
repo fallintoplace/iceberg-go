@@ -139,8 +139,8 @@ func TestReadManifestListInfersVersionWhenKeyAbsent(t *testing.T) {
 
 		assert.Equal(t, 2, got[0].Version())
 		assert.Equal(t, ManifestContentDeletes, got[0].ManifestContent())
-		assert.Equal(t, int64(5), got[0].SequenceNum())
-		assert.Equal(t, int64(3), got[0].MinSequenceNum())
+		assert.Equal(t, int64(5), got[0].SequenceNumber())
+		assert.Equal(t, int64(3), got[0].MinSequenceNumber())
 		assert.Equal(t, int64(42), got[0].SnapshotID())
 	})
 
@@ -168,8 +168,8 @@ func TestReadManifestListInfersVersionWhenKeyAbsent(t *testing.T) {
 		assert.Equal(t, int64(100), *got[0].FirstRowID())
 
 		assert.Equal(t, ManifestContentDeletes, got[1].ManifestContent())
-		assert.Equal(t, int64(5), got[1].SequenceNum())
-		assert.Equal(t, int64(3), got[1].MinSequenceNum())
+		assert.Equal(t, int64(5), got[1].SequenceNumber())
+		assert.Equal(t, int64(3), got[1].MinSequenceNumber())
 		assert.Nil(t, got[1].FirstRowID())
 	})
 }
@@ -212,15 +212,15 @@ func TestReadManifestListDuckDBFixture(t *testing.T) {
 
 	assert.Equal(t, 3, got[0].Version())
 	assert.Equal(t, ManifestContentData, got[0].ManifestContent())
-	assert.Equal(t, int64(1), got[0].SequenceNum())
-	assert.Equal(t, int64(1), got[0].MinSequenceNum())
+	assert.Equal(t, int64(1), got[0].SequenceNumber())
+	assert.Equal(t, int64(1), got[0].MinSequenceNumber())
 	require.NotNil(t, got[0].FirstRowID())
 	assert.Equal(t, int64(0), *got[0].FirstRowID())
 
 	assert.Equal(t, 3, got[1].Version())
 	assert.Equal(t, ManifestContentDeletes, got[1].ManifestContent())
-	assert.Equal(t, int64(2), got[1].SequenceNum())
-	assert.Equal(t, int64(2), got[1].MinSequenceNum())
+	assert.Equal(t, int64(2), got[1].SequenceNumber())
+	assert.Equal(t, int64(2), got[1].MinSequenceNumber())
 }
 
 // TestReadManifestListKeyContradictsSchema: a "format-version" key claiming

@@ -938,14 +938,14 @@ func (scan *Scan) partitionFiltersForSchema(schema *iceberg.Schema) *keyDefaultM
 func (scan *Scan) checkSequenceNumber(minSeqNum int64, manifest iceberg.ManifestFile) bool {
 	return manifest.ManifestContent() == iceberg.ManifestContentData ||
 		(manifest.ManifestContent() == iceberg.ManifestContentDeletes &&
-			manifest.SequenceNum() >= minSeqNum)
+			manifest.SequenceNumber() >= minSeqNum)
 }
 
 func minSequenceNum(manifests []iceberg.ManifestFile) int64 {
 	var n int64 = math.MaxInt64
 	for _, m := range manifests {
 		if m.ManifestContent() == iceberg.ManifestContentData {
-			n = min(n, m.MinSequenceNum())
+			n = min(n, m.MinSequenceNumber())
 		}
 	}
 	if n == math.MaxInt64 {

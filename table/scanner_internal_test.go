@@ -2496,7 +2496,7 @@ func TestPlanDataManifestTasksHandlesInaccurateCounts(t *testing.T) {
 		for i, manifest := range manifests {
 			manifests[i] = iceberg.NewManifestFile(2, manifest.FilePath(), manifest.Length(),
 				manifest.PartitionSpecID(), manifest.SnapshotID()).
-				SequenceNum(manifest.SequenceNum(), manifest.MinSequenceNum()).
+				SequenceNum(manifest.SequenceNumber(), manifest.MinSequenceNumber()).
 				AddedFiles(counts[i]).
 				Build()
 		}
