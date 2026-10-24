@@ -384,8 +384,8 @@ func (m *manifestFile) DeletedDataFiles() int32          { return m.DeletedFiles
 func (m *manifestFile) AddedRows() int64                 { return m.AddedRowsCount }
 func (m *manifestFile) ExistingRows() int64              { return m.ExistingRowsCount }
 func (m *manifestFile) DeletedRows() int64               { return m.DeletedRowsCount }
-func (m *manifestFile) SequenceNumber() int64               { return m.SeqNumber }
-func (m *manifestFile) MinSequenceNumber() int64            { return m.MinSeqNumber }
+func (m *manifestFile) SequenceNumber() int64            { return m.SeqNumber }
+func (m *manifestFile) MinSequenceNumber() int64         { return m.MinSeqNumber }
 func (m *manifestFile) KeyMetadata() []byte {
 	if m.Key == nil {
 		return nil
