@@ -87,7 +87,6 @@ func (v3writerImpl) prepareEntry(entry *manifestEntry, snapshotID int64) (Manife
 	return entry, nil
 }
 
-
 type ManifestWriter struct {
 	closed   bool
 	closeErr error
@@ -402,7 +401,6 @@ func (w *ManifestWriter) Existing(entry ManifestEntry) error {
 
 	return w.addEntry(&w.reusedEntry)
 }
-
 
 func WriteManifest(
 	filename string,

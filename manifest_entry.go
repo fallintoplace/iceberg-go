@@ -27,7 +27,6 @@ const (
 	EntryStatusDELETED  ManifestEntryStatus = 2
 )
 
-
 type ManifestEntryBuilder struct {
 	m *manifestEntry
 }
@@ -149,7 +148,6 @@ func NewManifestEntry(status ManifestEntryStatus, snapshotID *int64, seqNum, fil
 		Data:        df,
 	}
 }
-
 
 // ManifestEntry is an interface for both v1 and v2 manifest entries.
 type ManifestEntry interface {

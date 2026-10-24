@@ -169,7 +169,6 @@ func fitDecimalBytes(bytes []byte, size int) ([]byte, error) {
 	return retained, nil
 }
 
-
 func (d *dataFile) initPartitionData() {
 	d.initPartition.Do(func() {
 		if len(d.fieldIDToPartitionData) < len(d.PartitionData) {

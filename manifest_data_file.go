@@ -75,7 +75,6 @@ func FileFormatFromString(s string) (FileFormat, error) {
 	}
 }
 
-
 type dataFile struct {
 	Content          ManifestEntryContent `avro:"content"`
 	projected        bool
@@ -121,7 +120,6 @@ type dataFile struct {
 	initPartition   sync.Once
 	initColumnStats sync.Once
 }
-
 
 func (d *dataFile) ContentType() ManifestEntryContent { return d.Content }
 func (d *dataFile) FilePath() string                  { return d.Path }
@@ -258,7 +256,6 @@ func (d *dataFile) FirstRowID() *int64          { return clonePointer(d.FirstRow
 func (d *dataFile) ReferencedDataFile() *string { return clonePointer(d.ReferencedDataFileField) }
 func (d *dataFile) ContentSizeInBytes() *int64  { return clonePointer(d.ContentSizeInBytesField) }
 func (d *dataFile) ContentOffset() *int64       { return clonePointer(d.ContentOffsetField) }
-
 
 // DataFileBuilder is a helper for building a data file struct which will
 // conform to the DataFile interface.
@@ -520,7 +517,6 @@ type DataFile interface {
 	// ContentSizeInBytes returns the length of referenced contented stored in the file (v3+ only)
 	ContentSizeInBytes() *int64
 }
-
 
 var PositionalDeleteSchema = NewSchema(0,
 	NestedField{ID: DeleteFilePathFieldID, Type: PrimitiveTypes.String, Name: "file_path", Required: true},
