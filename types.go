@@ -644,12 +644,21 @@ func validateFixedLength(length int) error {
 	return nil
 }
 
-func FixedTypeOf(n int) FixedType {
+func FixedTypeOf(n int) (FixedType, error) {
 	if err := validateFixedLength(n); err != nil {
-		panic(fmt.Errorf("%w: %s", ErrInvalidArgument, err))
+		return FixedType{}, fmt.Errorf("%w: %w", ErrInvalidArgument, err)
 	}
 
-	return FixedType{len: n}
+	return FixedType{len: n}, nil
+}
+
+func MustFixedTypeOf(n int) FixedType {
+	typ, err := FixedTypeOf(n)
+	if err != nil {
+		panic(err)
+	}
+
+	return typ
 }
 
 type FixedType struct {
@@ -669,12 +678,21 @@ func (f FixedType) Type() string   { return fmt.Sprintf("fixed[%d]", f.len) }
 func (f FixedType) String() string { return fmt.Sprintf("fixed[%d]", f.len) }
 func (f FixedType) primitive()     {}
 
-func DecimalTypeOf(prec, scale int) DecimalType {
+func DecimalTypeOf(prec, scale int) (DecimalType, error) {
 	if err := validateDecimalPrecisionScale(prec, scale); err != nil {
-		panic(fmt.Errorf("%w: %w", ErrInvalidArgument, err))
+		return DecimalType{}, fmt.Errorf("%w: %w", ErrInvalidArgument, err)
 	}
 
-	return DecimalType{precision: prec, scale: scale}
+	return DecimalType{precision: prec, scale: scale}, nil
+}
+
+func MustDecimalTypeOf(prec, scale int) DecimalType {
+	typ, err := DecimalTypeOf(prec, scale)
+	if err != nil {
+		panic(err)
+	}
+
+	return typ
 }
 
 func validateDecimalPrecisionScale(precision, scale int) error {
