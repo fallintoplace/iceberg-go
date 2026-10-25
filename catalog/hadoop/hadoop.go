@@ -277,11 +277,8 @@ func (c *Catalog) CatalogType() catalog.Type {
 	return catalog.Hadoop
 }
 
-// Close releases the catalog's metrics reporter. Callers holding a
-// [catalog.Catalog] can reach this via a [catalog.Closer] type assertion.
+// Close releases the catalog's metrics reporter. Close is required by [catalog.Catalog].
 func (c *Catalog) Close() error { return c.reporter.Close() }
-
-var _ catalog.Closer = (*Catalog)(nil)
 
 // joinPath is a helper that allows paths to be joined as both local filesystem
 // paths or as remote URIs needed for filesystems like blob stores.
@@ -594,6 +591,7 @@ func (c *Catalog) CreateTable(ctx context.Context, ident table.Identifier, sc *i
 		io.LoadFSFunc(c.props, metaPath),
 		c,
 		table.WithMetricsReporter(reporter),
+		table.WithScanPlanningIOProperties(c.props),
 	)
 
 	return tbl, nil
@@ -614,7 +612,11 @@ func (c *Catalog) loadTable(ctx context.Context, ident table.Identifier) (*table
 		return nil, 0, fmt.Errorf("failed to initialize metrics reporter: %w", err)
 	}
 
-	tbl, err := table.NewFromLocation(ctx, ident, metaPath, io.LoadFSFunc(c.props, metaPath), c, table.WithMetricsReporter(reporter))
+	tbl, err := table.NewFromLocation(
+		ctx, ident, metaPath, io.LoadFSFunc(c.props, metaPath), c,
+		table.WithMetricsReporter(reporter),
+		table.WithScanPlanningIOProperties(c.props),
+	)
 	if err != nil {
 		return nil, 0, err
 	}
