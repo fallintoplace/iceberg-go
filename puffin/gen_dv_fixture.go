@@ -85,7 +85,7 @@ func main() {
 	// the inner-payload bytes survive the round-trip. Without the ReadBlob
 	// step a writer bug producing valid-but-mismatched blob offsets/lengths
 	// would still pass parse-only validation and calcify into the fixture.
-	r, err := puffin.NewReader(bytes.NewReader(buf.Bytes()))
+	r, err := puffin.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 	if err != nil {
 		log.Fatalf("regen produced an unreadable puffin file: %v", err)
 	}

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"log/slog"
 	"math"
 	"slices"
@@ -434,7 +435,14 @@ func openDVReader(fs iceio.IO, filePath string) (*puffin.Reader, iceio.File, err
 		return nil, nil, fmt.Errorf("open DV file %s: %w", filePath, err)
 	}
 
-	reader, err := puffin.NewReader(f)
+	// Preserve the existing seek-to-end size detection for Iceberg files.
+	// The Puffin API itself requires only io.ReaderAt.
+	size, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, fmt.Errorf("size DV file %s: %w", filePath, err)
+	}
+	reader, err := puffin.NewReader(f, size)
 	if errors.Is(err, puffin.ErrNotPuffinFile) {
 		return nil, f, nil
 	}

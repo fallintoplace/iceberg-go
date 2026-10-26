@@ -55,7 +55,7 @@ func BenchmarkReadAllBlobs(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			reader, err := puffin.NewReader(bytes.NewReader(buf.Bytes()))
+			reader, err := newPuffinReader(bytes.NewReader(buf.Bytes()))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -80,7 +80,7 @@ func BenchmarkReadAllBlobs(b *testing.B) {
 				{name: "shuffled", data: shuffled},
 			} {
 				b.Run(test.name, func(b *testing.B) {
-					reader, err := puffin.NewReader(bytes.NewReader(test.data))
+					reader, err := newPuffinReader(bytes.NewReader(test.data))
 					if err != nil {
 						b.Fatal(err)
 					}

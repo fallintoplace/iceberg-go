@@ -75,7 +75,9 @@ func TestCrossClientReadJavaMultiBlobDV(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { f.Close() })
 
-	reader, err := puffin.NewReader(f)
+	info, err := f.Stat()
+	require.NoError(t, err)
+	reader, err := puffin.NewReader(f, info.Size())
 	require.NoError(t, err)
 
 	blobs := reader.Blobs()
@@ -215,7 +217,9 @@ func loadJavaPuffinBlob(t *testing.T, fixture string, blobIdx int, referencedDat
 	require.NoError(t, err)
 	defer f.Close()
 
-	reader, err := puffin.NewReader(f)
+	info, err := f.Stat()
+	require.NoError(t, err)
+	reader, err := puffin.NewReader(f, info.Size())
 	require.NoError(t, err)
 
 	blobs := reader.Blobs()

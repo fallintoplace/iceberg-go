@@ -131,7 +131,7 @@ func TestDeletionVectorPuffinWireFormat(t *testing.T) {
 	}
 
 	// Magic bytes at file head and tail.
-	r, err := puffin.NewReader(bytes.NewReader(puffinBytes))
+	r, err := newPuffinReader(bytes.NewReader(puffinBytes))
 	require.NoError(t, err)
 
 	// Read-side pin: blob count, type, spec-mandated invariants.

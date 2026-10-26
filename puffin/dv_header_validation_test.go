@@ -85,7 +85,7 @@ func writeWithPatchedType(t *testing.T, snapshotID, sequenceNumber int64) []byte
 // arbitrary blob bytes into dv.DeserializeDV.
 func TestReaderRejectsDeletionVectorWithBadHeader(t *testing.T) {
 	t.Run("rejects snapshot-id != -1", func(t *testing.T) {
-		_, err := puffin.NewReader(bytes.NewReader(writeWithPatchedType(t, 5, -1)))
+		_, err := newPuffinReader(bytes.NewReader(writeWithPatchedType(t, 5, -1)))
 		require.Error(t, err)
 		// Assert on the actual value carried in the error (not the spec
 		// substring), so the assertion fails if the formatter ever drops
@@ -96,7 +96,7 @@ func TestReaderRejectsDeletionVectorWithBadHeader(t *testing.T) {
 	})
 
 	t.Run("rejects sequence-number != -1", func(t *testing.T) {
-		_, err := puffin.NewReader(bytes.NewReader(writeWithPatchedType(t, -1, 10)))
+		_, err := newPuffinReader(bytes.NewReader(writeWithPatchedType(t, -1, 10)))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sequence-number")
 		assert.Contains(t, err.Error(), "got 10")
@@ -108,7 +108,7 @@ func TestReaderRejectsDeletionVectorWithBadHeader(t *testing.T) {
 		// reorders them, this test fails — the ordering is part of the
 		// implicit contract for log/diagnostic consumers grepping for
 		// "snapshot-id" before "sequence-number".
-		_, err := puffin.NewReader(bytes.NewReader(writeWithPatchedType(t, 7, 13)))
+		_, err := newPuffinReader(bytes.NewReader(writeWithPatchedType(t, 7, 13)))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "snapshot-id")
 		assert.Contains(t, err.Error(), "got 7")
@@ -133,7 +133,7 @@ func TestReaderRejectsDeletionVectorWithBadHeader(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, w.Finish())
 
-		_, err = puffin.NewReader(bytes.NewReader(buf.Bytes()))
+		_, err = newPuffinReader(bytes.NewReader(buf.Bytes()))
 		require.NoError(t, err)
 	})
 }

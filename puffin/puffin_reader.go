@@ -38,18 +38,11 @@ import (
 // with errors.Is.
 var ErrNotPuffinFile = errors.New("puffin: not a puffin file")
 
-// ReaderAtSeeker combines io.ReaderAt and io.Seeker for reading Puffin files.
-// This interface is implemented by *os.File, *bytes.Reader, and similar types.
-type ReaderAtSeeker interface {
-	io.ReaderAt
-	io.Seeker
-}
-
 // Reader reads blobs and metadata from a Puffin file.
 //
 // Usage:
 //
-//	r, err := puffin.NewReader(file)
+//	r, err := puffin.NewReader(file, size)
 //	if err != nil {
 //	    return err
 //	}
@@ -58,7 +51,7 @@ type ReaderAtSeeker interface {
 //	    // process blob.Data
 //	}
 type Reader struct {
-	r             ReaderAtSeeker
+	r             io.ReaderAt
 	size          int64
 	footer        Footer
 	footerStart   int64 // cached after ReadFooter
@@ -96,18 +89,17 @@ func WithMaxFooterSize(size int64) ReaderOption {
 }
 
 // NewReader creates a new Puffin file reader.
-// The file size is auto-detected using Seek.
+// The caller supplies the file size so a ReaderAt without Seek can be used.
+// Reads do not change any cursor maintained by the underlying reader.
 // It validates magic bytes and reads the footer eagerly.
 // The caller is responsible for closing the underlying reader.
-func NewReader(r ReaderAtSeeker, opts ...ReaderOption) (*Reader, error) {
+func NewReader(r io.ReaderAt, size int64, opts ...ReaderOption) (*Reader, error) {
 	if r == nil {
 		return nil, errors.New("puffin: reader is nil")
 	}
 
-	// Auto-detect file size
-	size, err := r.Seek(0, io.SeekEnd)
-	if err != nil {
-		return nil, fmt.Errorf("puffin: detect file size: %w", err)
+	if size < 0 {
+		return nil, fmt.Errorf("puffin: invalid file size %d", size)
 	}
 
 	// Validate header magic first: only a file that cannot show the Puffin

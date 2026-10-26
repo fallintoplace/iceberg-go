@@ -139,7 +139,7 @@ func TestReaderPreservesLZ4BlockChecksumError(t *testing.T) {
 	frame[blockChecksumOffset] ^= 0xff
 	data := compressedReaderTestFile(frame)
 
-	_, err := NewReader(bytes.NewReader(data))
+	_, err := NewReader(bytes.NewReader(data), int64(len(data)))
 	require.ErrorContains(t, err, "invalid block checksum")
 }
 
