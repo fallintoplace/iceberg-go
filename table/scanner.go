@@ -547,7 +547,7 @@ type Scan struct {
 	identifier           Identifier
 	metadata             Metadata
 	metadataLocation     string
-	ioF                  FSysF
+	ioF                  FileIOFactory
 	manifestCache        *snapshotManifestCache
 	manifestContentCache *manifestContentCache
 	planner              ScanPlanner
@@ -1087,7 +1087,7 @@ func (scan *Scan) manifestSet(
 func (scan *Scan) manifestSetWithFSF(
 	ctx context.Context,
 	snapshot Snapshot,
-	fsF FSysF,
+	fsF FileIOFactory,
 ) (snapshotManifestSet, error) {
 	return scan.manifestCache.get(ctx, snapshot, func(loadCtx context.Context) (snapshotManifestSet, error) {
 		return readSnapshotManifestSet(loadCtx, snapshot, fsF)
@@ -1175,7 +1175,7 @@ func (scan *Scan) filterManifestsWithSchemaOptions(
 // still get regular checkpoints without rebuilding the backend for every
 // manifest.
 type manifestIOBatch struct {
-	factory FSysF
+	factory FileIOFactory
 	limit   int
 
 	mu        sync.Mutex
@@ -1183,7 +1183,7 @@ type manifestIOBatch struct {
 	remaining int
 }
 
-func newManifestIOBatch(factory FSysF, limit int) *manifestIOBatch {
+func newManifestIOBatch(factory FileIOFactory, limit int) *manifestIOBatch {
 	return &manifestIOBatch{factory: factory, limit: max(limit, 1)}
 }
 

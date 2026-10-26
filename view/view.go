@@ -99,7 +99,7 @@ func NewFromLocation(
 	ctx context.Context,
 	ident table.Identifier,
 	metalocation string,
-	fsysF table.FSysF,
+	fsysF table.FileIOFactory,
 ) (*View, error) {
 	var meta Metadata
 

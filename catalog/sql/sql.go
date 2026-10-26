@@ -753,7 +753,7 @@ func checkValidNamespace(ident table.Identifier) error {
 	return nil
 }
 
-func removeUncommittedMetadata(ctx context.Context, metadataLocation string, loadFS table.FSysF) error {
+func removeUncommittedMetadata(ctx context.Context, metadataLocation string, loadFS table.FileIOFactory) error {
 	// This runs after a failed commit, which may have failed because ctx was
 	// canceled, so neither the load nor the removal inherits that cancellation.
 	cleanupCtx := context.WithoutCancel(ctx)

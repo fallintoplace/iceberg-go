@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testFSF(io iceio.IO) FSysF {
+func testFSF(io iceio.IO) FileIOFactory {
 	return func(context.Context) (iceio.IO, error) { return io, nil }
 }
 

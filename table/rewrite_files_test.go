@@ -51,7 +51,7 @@ import (
 type concurrentTestCatalog struct {
 	metadata table.Metadata
 	location string
-	fsF      table.FSysF
+	fsF      table.FileIOFactory
 	attempts atomic.Int32
 }
 

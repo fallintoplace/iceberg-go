@@ -85,7 +85,9 @@ func requireWriteFileIO(fs icebergio.IO) (icebergio.WriteFileIO, error) {
 // via errors.Is(err, ErrSnapshotNotFound).
 var ErrSnapshotNotFound = errors.New("snapshot not found")
 
-type FSysF func(ctx context.Context) (icebergio.IO, error)
+// FileIOFactory resolves a FileIO implementation for a table or view.
+// It may return a shared instance and receives the caller's context.
+type FileIOFactory func(ctx context.Context) (icebergio.IO, error)
 
 type Identifier = []string
 
@@ -99,7 +101,7 @@ type Table struct {
 	metadata             Metadata
 	metadataLocation     string
 	cat                  CatalogIO
-	fsF                  FSysF
+	fsF                  FileIOFactory
 	manifestCache        *snapshotManifestCache
 	manifestContentCache *manifestContentCache
 	planner              ScanPlanner
@@ -391,7 +393,7 @@ func (t Table) manifestSet(ctx context.Context, snapshot Snapshot) (snapshotMani
 func (t Table) manifestSetWithFSF(
 	ctx context.Context,
 	snapshot Snapshot,
-	fsF FSysF,
+	fsF FileIOFactory,
 ) (snapshotManifestSet, error) {
 	return t.manifestCache.get(ctx, snapshot, func(loadCtx context.Context) (snapshotManifestSet, error) {
 		return readSnapshotManifestSet(loadCtx, snapshot, fsF)
@@ -1477,7 +1479,7 @@ func withReporterState(r metrics.Reporter, set bool) Option {
 // implement ScanPlanner leave planner nil and planning stays local. This is the
 // concrete Catalog -> Table -> Scan wiring for #1178: the catalog already
 // satisfies ScanPlanner, so no catalog accessor is needed.
-func New(ident Identifier, meta Metadata, metadataLocation string, fsF FSysF, cat CatalogIO, opts ...Option) *Table {
+func New(ident Identifier, meta Metadata, metadataLocation string, fsF FileIOFactory, cat CatalogIO, opts ...Option) *Table {
 	// A catalog that supports server-side scan planning implements ScanPlanner.
 	var planner ScanPlanner
 	if p, ok := cat.(ScanPlanner); ok {
@@ -1513,7 +1515,7 @@ func NewFromLocation(
 	ctx context.Context,
 	ident Identifier,
 	metalocation string,
-	fsysF FSysF,
+	fsysF FileIOFactory,
 	cat CatalogIO,
 	opts ...Option,
 ) (_ *Table, err error) {

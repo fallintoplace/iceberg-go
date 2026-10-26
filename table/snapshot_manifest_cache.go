@@ -292,7 +292,7 @@ func (c *snapshotManifestCache) finish(
 func readSnapshotManifestSet(
 	ctx context.Context,
 	snapshot Snapshot,
-	fsF FSysF,
+	fsF FileIOFactory,
 ) (snapshotManifestSet, error) {
 	if err := ctx.Err(); err != nil {
 		return snapshotManifestSet{}, err
@@ -332,7 +332,7 @@ func readSnapshotManifestSet(
 // configured FileIO returns an error from every method.
 type ManifestProvider struct {
 	cache *snapshotManifestCache
-	fsF   FSysF
+	fsF   FileIOFactory
 }
 
 // ManifestProvider returns a provider that reads this table's manifest lists
@@ -371,7 +371,7 @@ func (p ManifestProvider) cachedSet(snapshot Snapshot) (snapshotManifestSet, boo
 	return p.cache.tryGetComplete(snapshot)
 }
 
-func sharedSnapshotManifestFSF(fsF FSysF) FSysF {
+func sharedSnapshotManifestFSF(fsF FileIOFactory) FileIOFactory {
 	var (
 		once sync.Once
 		fio  iceio.IO
