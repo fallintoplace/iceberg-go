@@ -118,7 +118,7 @@ register a factory for it (typically from `init`):
 
 ```go
 func init() {
-    metrics.Register("my-reporter", func(props map[string]string) (metrics.Reporter, error) {
+    metrics.MustRegister("my-reporter", func(props map[string]string) (metrics.Reporter, error) {
         return myReporter{}, nil
     })
 }

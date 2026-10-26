@@ -27,11 +27,11 @@ import (
 func TestCachedReporter(t *testing.T) {
 	t.Run("builds once and caches", func(t *testing.T) {
 		var builds int
-		Register("cached-once", func(map[string]string) (Reporter, error) {
+		require.NoError(t, Register("cached-once", func(map[string]string) (Reporter, error) {
 			builds++
 
 			return &countingReporter{}, nil
-		})
+		}))
 		t.Cleanup(func() { Deregister("cached-once") })
 
 		var c CachedReporter
@@ -46,7 +46,7 @@ func TestCachedReporter(t *testing.T) {
 
 	t.Run("Close releases the built reporter", func(t *testing.T) {
 		cr := &countingReporter{}
-		Register("cached-close", func(map[string]string) (Reporter, error) { return cr, nil })
+		require.NoError(t, Register("cached-close", func(map[string]string) (Reporter, error) { return cr, nil }))
 		t.Cleanup(func() { Deregister("cached-close") })
 
 		var c CachedReporter
@@ -63,7 +63,7 @@ func TestCachedReporter(t *testing.T) {
 
 	t.Run("Close is idempotent and does not re-close", func(t *testing.T) {
 		cr := &countingReporter{}
-		Register("cached-idempotent", func(map[string]string) (Reporter, error) { return cr, nil })
+		require.NoError(t, Register("cached-idempotent", func(map[string]string) (Reporter, error) { return cr, nil }))
 		t.Cleanup(func() { Deregister("cached-idempotent") })
 
 		var c CachedReporter
@@ -76,7 +76,7 @@ func TestCachedReporter(t *testing.T) {
 
 	t.Run("Get after Close returns the nop reporter", func(t *testing.T) {
 		cr := &countingReporter{}
-		Register("cached-post-close", func(map[string]string) (Reporter, error) { return cr, nil })
+		require.NoError(t, Register("cached-post-close", func(map[string]string) (Reporter, error) { return cr, nil }))
 		t.Cleanup(func() { Deregister("cached-post-close") })
 
 		var c CachedReporter
@@ -98,4 +98,24 @@ func TestCachedReporter(t *testing.T) {
 		_, err2 := c.Get(props)
 		assert.Equal(t, err1, err2, "the cached error must be returned without rebuilding")
 	})
+}
+
+func TestCachedReporterScopedRegistry(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry()
+	rep := &countingReporter{}
+	require.NoError(t, reg.Register("private-cache", func(map[string]string) (Reporter, error) {
+		return rep, nil
+	}))
+	props := map[string]string{ReporterImplKey: "private-cache"}
+	_, err := FromProperties(props)
+	require.Error(t, err)
+
+	cache := NewCachedReporter(reg)
+	got, err := cache.Get(props)
+	require.NoError(t, err)
+	assert.Same(t, rep, got)
+	require.NoError(t, cache.Close())
+	assert.Equal(t, 1, rep.closeCalls())
 }

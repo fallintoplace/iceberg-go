@@ -45,7 +45,7 @@ var (
 
 func registerCommitReportSink() {
 	registerCommitSinkOnce.Do(func() {
-		metrics.Register(commitReportReporterName, func(map[string]string) (metrics.Reporter, error) {
+		metrics.MustRegister(commitReportReporterName, func(map[string]string) (metrics.Reporter, error) {
 			return commitReportSink, nil
 		})
 	})

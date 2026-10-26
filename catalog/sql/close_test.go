@@ -60,9 +60,9 @@ func TestCloseReturnsReporterAndDatabaseErrors(t *testing.T) {
 	dbErr := errors.New("database close")
 	reporterErr := errors.New("reporter close")
 
-	metrics.Register(closeErrorReporterName, func(map[string]string) (metrics.Reporter, error) {
+	require.NoError(t, metrics.Register(closeErrorReporterName, func(map[string]string) (metrics.Reporter, error) {
 		return closeErrorReporter{err: reporterErr}, nil
-	})
+	}))
 	t.Cleanup(func() {
 		metrics.Deregister(closeErrorReporterName)
 	})
