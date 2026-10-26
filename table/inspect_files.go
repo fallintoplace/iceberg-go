@@ -186,24 +186,7 @@ func (i InspectTable) manifestEntryReaderFromManifestSource(
 		bldr := array.NewRecordBuilder(i.alloc, arrowSchema)
 		defer bldr.Release()
 
-		rows := 0
-		emitted := false
-		emit := func() bool {
-			if rows == 0 {
-				return true
-			}
-
-			batch := bldr.NewRecordBatch()
-			rows = 0
-			emitted = true
-
-			return yield(batch, nil)
-		}
-		emitEmpty := func() {
-			batch := bldr.NewRecordBatch()
-			emitted = true
-			_ = yield(batch, nil)
-		}
+		batches := inspectBatchEmitter{builder: bldr, yield: yield}
 		yieldError := func(err error) {
 			_ = yield(nil, err)
 		}
@@ -239,18 +222,13 @@ func (i InspectTable) manifestEntryReaderFromManifestSource(
 
 					return
 				}
-				rows++
-				if rows == inspectRecordBatchSize && !emit() {
+				if !batches.appendRows(1) {
 					return
 				}
 			}
 		}
 
-		if rows > 0 {
-			_ = emit()
-		} else if !emitted {
-			emitEmpty()
-		}
+		batches.finish()
 	})
 }
 

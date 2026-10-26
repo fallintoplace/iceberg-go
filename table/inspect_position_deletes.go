@@ -506,18 +506,7 @@ func (i InspectTable) positionDeleteRecordReader(
 			return
 		}
 
-		rows := 0
-		emitted := false
-		emit := func() bool {
-			if rows == 0 {
-				return true
-			}
-			batch := bldr.NewRecordBatch()
-			rows = 0
-			emitted = true
-
-			return yield(batch, nil)
-		}
+		batches := inspectBatchEmitter{builder: bldr, yield: yield}
 		yieldError := func(err error) {
 			_ = yield(nil, err)
 		}
@@ -525,12 +514,7 @@ func (i InspectTable) positionDeleteRecordReader(
 			if err := appender.appendPrepared(meta, path, pos, deletedRow, projected); err != nil {
 				return false, err
 			}
-			rows++
-			if rows == inspectRecordBatchSize {
-				return emit(), nil
-			}
-
-			return true, nil
+			return batches.appendRows(1), nil
 		}
 
 		for manifest := range manifests {
@@ -584,12 +568,7 @@ func (i InspectTable) positionDeleteRecordReader(
 			}
 		}
 
-		if rows > 0 {
-			_ = emit()
-		} else if !emitted {
-			batch := bldr.NewRecordBatch()
-			_ = yield(batch, nil)
-		}
+		batches.finish()
 	})
 }
 

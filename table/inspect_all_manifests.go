@@ -51,25 +51,8 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 		bldr := array.NewRecordBuilder(i.alloc, arrowSchema)
 		defer bldr.Release()
 
-		rows := 0
-		emitted := false
+		batches := inspectBatchEmitter{builder: bldr, yield: yield}
 		chunk := make([]iceberg.ManifestFile, 0, inspectRecordBatchSize)
-		emit := func() bool {
-			if rows == 0 {
-				return true
-			}
-
-			batch := bldr.NewRecordBatch()
-			rows = 0
-			emitted = true
-
-			return yield(batch, nil)
-		}
-		emitEmpty := func() {
-			batch := bldr.NewRecordBatch()
-			emitted = true
-			_ = yield(batch, nil)
-		}
 		yieldError := func(err error) {
 			_ = yield(nil, err)
 		}
@@ -98,17 +81,17 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 
 					return false
 				}
-				rows += len(chunk)
+				size := len(chunk)
 				chunk = chunk[:0]
 
-				return true
+				return batches.appendRows(size)
 			}
 			for manifest := range manifests {
 				chunk = append(chunk, manifest)
-				if rows+len(chunk) < inspectRecordBatchSize {
+				if batches.rows+len(chunk) < inspectRecordBatchSize {
 					continue
 				}
-				if !appendChunk() || !emit() {
+				if !appendChunk() {
 					return
 				}
 			}
@@ -117,11 +100,7 @@ func (i InspectTable) AllManifests(ctx context.Context) (array.RecordReader, err
 			}
 		}
 
-		if rows > 0 {
-			_ = emit()
-		} else if !emitted {
-			emitEmpty()
-		}
+		batches.finish()
 	}), nil
 }
 
