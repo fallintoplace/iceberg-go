@@ -86,7 +86,7 @@ The most option-rich surface. Source: [`catalog/rest/options.go`](https://github
 >   `WithSigV4` / `WithSigV4RegionSvc` or the `rest.sigv4-enabled` property. The
 >   backend signs with the `s3.*` credential properties when set (falling back to
 >   the `rest.*` aliases), otherwise with the AWS default credential chain.
-> - Explicit config: pass `sigv4.WithAwsConfig(cfg)` to `NewCatalog` alongside
+> - Explicit config: pass `sigv4.WithAWSConfig(cfg)` to `NewCatalog` alongside
 >   `WithSigV4` / `WithSigV4RegionSvc` (no blank import needed). It supplies the
 >   `aws.Config`; the signing service comes from those options (or a server
 >   `/v1/config` override), and so does the region when one is set. Otherwise
@@ -146,8 +146,8 @@ Invalid values (non-positive waits/retries, or min ≥ max) are ignored and the 
 
 Source: [`catalog/glue/options.go`](https://github.com/apache/iceberg-go/blob/main/catalog/glue/options.go).
 
-- `WithAwsConfig(cfg aws.Config)` - AWS SDK v2 config; respects the AWS default credential chain.
-- `WithAwsProperties(props AwsProperties)` - explicit overrides for region/endpoint/access keys.
+- `WithAWSConfig(cfg aws.Config)` - AWS SDK v2 config; respects the AWS default credential chain.
+- `WithAWSProperties(props AWSProperties)` - catalog properties, such as `glue.id` and the `s3.*` FileIO keys. `NewCatalog` ignores the `glue.region`, endpoint, credential, and retry keys; only `catalog.Load` reads them.
 
 ### SQL (`catalog/sql`)
 
@@ -338,7 +338,7 @@ func init() {
 }
 ```
 
-After registration, `catalog.Load(ctx, "default", iceberg.Properties{"type": "mycatalog", ...})` will route to the factory. Built-in types: `rest`, `hive`, `glue`, `sql`, `hadoop`.
+After registration, `catalog.Load(ctx, "default", iceberg.Properties{"type": "mycatalog", ...})` will route to the factory. Custom catalogs must implement `Close() error` to satisfy `catalog.Catalog`, and callers must close them when finished. Built-in types: `rest`, `hive`, `glue`, `sql`, `hadoop`.
 
 `catalog.GetRegisteredCatalogs()` returns the current list; `catalog.Unregister(catalogType)` removes one.
 

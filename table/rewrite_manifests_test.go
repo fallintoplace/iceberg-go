@@ -102,7 +102,7 @@ func appendSeparateManifests(t *testing.T, ctx context.Context, tbl *table.Table
 		writeOneRowParquet(t, fs, filePath)
 
 		txn := tbl.NewTransaction()
-		require.NoError(t, txn.AddFiles(ctx, []string{filePath}, nil, false))
+		require.NoError(t, txn.AddDataFilesByPath(ctx, []string{filePath}, nil, false))
 		tbl, err = txn.Commit(ctx)
 		require.NoError(t, err)
 	}
@@ -425,7 +425,8 @@ func TestRewriteManifestsOnBranchOnlyTable(t *testing.T) {
 		rec := array.NewRecordBatch(rewriteArrowSchema, []arrow.Array{col}, 1)
 		arrTbl := array.NewTableFromRecords(rewriteArrowSchema, []arrow.RecordBatch{rec})
 
-		txn := tbl.NewTransactionOnBranch("feature")
+		txn, err := tbl.NewTransactionOnBranch("feature")
+		require.NoError(t, err)
 		require.NoError(t, txn.AppendTable(ctx, arrTbl, 1024, nil))
 		tbl, err = txn.Commit(ctx)
 		require.NoError(t, err)
@@ -443,7 +444,8 @@ func TestRewriteManifestsOnBranchOnlyTable(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, before, numData)
 
-	txn := tbl.NewTransactionOnBranch("feature")
+	txn, err := tbl.NewTransactionOnBranch("feature")
+	require.NoError(t, err)
 	res, err := txn.RewriteManifests(ctx)
 	require.NoError(t, err)
 	require.False(t, res.IsNoOp(),
@@ -662,7 +664,7 @@ func TestRewriteManifestsSpecIDFilter(t *testing.T) {
 			specOneFile := dir + "/spec1-0.parquet"
 			writeOneRowParquet(t, fs, specOneFile)
 			txn = tbl.NewTransaction()
-			require.NoError(t, txn.AddFiles(ctx, []string{specOneFile}, nil, false))
+			require.NoError(t, txn.AddDataFilesByPath(ctx, []string{specOneFile}, nil, false))
 			tbl, err = txn.Commit(ctx)
 			require.NoError(t, err)
 
@@ -815,12 +817,12 @@ func (f *trackingFS) Create(name string) (iceio.FileWriter, error) {
 	return f.LocalFS.Create(name)
 }
 
-func (f *trackingFS) Remove(name string) error {
+func (f *trackingFS) Remove(_ context.Context, name string) error {
 	f.mu.Lock()
 	f.removed = append(f.removed, name)
 	f.mu.Unlock()
 
-	return f.LocalFS.Remove(name)
+	return f.LocalFS.Remove(context.Background(), name)
 }
 
 func (f *trackingFS) snapshotCreated() map[string]struct{} {
@@ -906,7 +908,7 @@ func appendOne(t *testing.T, ctx context.Context, tbl *table.Table, fs iceio.Wri
 	writeOneRowParquet(t, fs, path)
 
 	txn := tbl.NewTransaction()
-	require.NoError(t, txn.AddFiles(ctx, []string{path}, nil, false))
+	require.NoError(t, txn.AddDataFilesByPath(ctx, []string{path}, nil, false))
 	out, err := txn.Commit(ctx)
 	require.NoError(t, err)
 
