@@ -30,39 +30,43 @@ import (
 	"github.com/apache/iceberg-go/config"
 )
 
-type registry map[string]Registrar
-
-func (r registry) getKeys() []string {
-	regMutex.RLock()
-	defer regMutex.RUnlock()
-
-	return slices.Sorted(maps.Keys(r))
+// registry owns the synchronization for its factories. Its zero value is ready to use.
+type registry struct {
+	mu        sync.RWMutex
+	factories map[string]Registrar
 }
 
-func (r registry) set(catalogType string, reg Registrar) {
-	regMutex.Lock()
-	defer regMutex.Unlock()
-	r[catalogType] = reg
+func (r *registry) getKeys() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return slices.Sorted(maps.Keys(r.factories))
 }
 
-func (r registry) get(catalogType string) (Registrar, bool) {
-	regMutex.RLock()
-	defer regMutex.RUnlock()
-	reg, ok := r[catalogType]
+func (r *registry) set(catalogType string, reg Registrar) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.factories == nil {
+		r.factories = make(map[string]Registrar)
+	}
+	r.factories[catalogType] = reg
+}
+
+func (r *registry) get(catalogType string) (Registrar, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	reg, ok := r.factories[catalogType]
 
 	return reg, ok
 }
 
-func (r registry) remove(catalogType string) {
-	regMutex.Lock()
-	defer regMutex.Unlock()
-	delete(r, catalogType)
+func (r *registry) remove(catalogType string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.factories, catalogType)
 }
 
-var (
-	regMutex        sync.RWMutex
-	defaultRegistry = registry{}
-)
+var defaultRegistry registry
 
 // Registrar is a factory for creating Catalog instances, used for registering to use
 // with LoadCatalog.
