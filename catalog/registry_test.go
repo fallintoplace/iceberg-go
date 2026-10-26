@@ -37,7 +37,7 @@ func TestCatalogLoadTypeIsCaseInsensitive(t *testing.T) {
 	ctx := context.Background()
 	defer catalog.Unregister("foobar")
 
-	catalog.Register("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
 		return nil, nil
 	}))
 
@@ -61,7 +61,7 @@ func TestCatalogRegistry(t *testing.T) {
 		"rest",
 	}, catalog.GetRegisteredCatalogs())
 
-	catalog.Register("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
 		assert.Equal(t, "foobar", s)
 		assert.Equal(t, "baz", p.Get("foo", ""))
 
@@ -80,7 +80,7 @@ func TestCatalogRegistry(t *testing.T) {
 	assert.Nil(t, c)
 	assert.ErrorIs(t, err, catalog.ErrCatalogNotFound)
 
-	catalog.Register("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
 		assert.Equal(t, "not found", s)
 		assert.Equal(t, "baz", p.Get("foo", ""))
 
@@ -91,7 +91,7 @@ func TestCatalogRegistry(t *testing.T) {
 	assert.Nil(t, c)
 	assert.NoError(t, err)
 
-	catalog.Register("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("foobar", catalog.RegistrarFunc(func(ctx context.Context, s string, p iceberg.Properties) (catalog.Catalog, error) {
 		assert.Equal(t, "not found", s)
 		assert.Equal(t, "foobar://helloworld", p.Get("uri", ""))
 		assert.Equal(t, "baz", p.Get("foo", ""))
@@ -117,7 +117,7 @@ func TestCatalogRegistry(t *testing.T) {
 
 func TestCatalogRegistryNormalizesType(t *testing.T) {
 	ctx := context.Background()
-	catalog.Register("MyCatalog", catalog.RegistrarFunc(func(context.Context, string, iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("MyCatalog", catalog.RegistrarFunc(func(context.Context, string, iceberg.Properties) (catalog.Catalog, error) {
 		return nil, nil
 	}))
 	t.Cleanup(func() { catalog.Unregister("MyCatalog") })
@@ -133,8 +133,9 @@ func TestCatalogRegistryNormalizesType(t *testing.T) {
 	assert.ErrorIs(t, err, catalog.ErrCatalogNotFound)
 }
 
-func TestRegistryPanic(t *testing.T) {
-	assert.PanicsWithValue(t, "catalog: RegisterCatalog catalog factory is nil", func() { catalog.Register("foobar", nil) })
+func TestRegistryRejectsNil(t *testing.T) {
+	assert.ErrorIs(t, catalog.Register("foobar", nil), iceberg.ErrInvalidArgument)
+	assert.Panics(t, func() { catalog.MustRegister("foobar", nil) })
 }
 
 func TestCatalogWithEmptyName(t *testing.T) {
@@ -148,7 +149,7 @@ func TestCatalogWithEmptyName(t *testing.T) {
 			CatalogType: "mock",
 		},
 	}
-	catalog.Register("mock", catalog.RegistrarFunc(func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("mock", catalog.RegistrarFunc(func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
 		// Ensure the correct name and properties are passed
 		assert.Equal(t, "test-default", name)
 		assert.Equal(t, "http://localhost:8181/", props.Get("uri", ""))
@@ -186,7 +187,7 @@ func TestCatalogLoadDoesNotMutateProps(t *testing.T) {
 		},
 	}
 
-	catalog.Register("mock", catalog.RegistrarFunc(func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("mock", catalog.RegistrarFunc(func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
 		assert.Equal(t, "mock", name)
 		assert.Equal(t, "mock", props.Get("type", ""))
 		assert.Equal(t, "http://localhost:8181/", props.Get("uri", ""))
@@ -216,7 +217,7 @@ func TestCatalogLoadInvalidURI(t *testing.T) {
 		},
 	}
 
-	catalog.Register("mock", catalog.RegistrarFunc(func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
+	catalog.MustRegister("mock", catalog.RegistrarFunc(func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
 		return nil, nil
 	}))
 	props := iceberg.Properties{

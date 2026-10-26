@@ -319,7 +319,7 @@ Cloud schemes (`s3`, `gs`, `abfs`, etc.) are registered only when the matching b
 
 ### Catalog type registry
 
-Register a custom catalog type with [`catalog.Register`](https://github.com/apache/iceberg-go/blob/main/catalog/registry.go):
+Register a custom catalog type in an `init` function with [`catalog.MustRegister`](https://github.com/apache/iceberg-go/blob/main/catalog/registry.go). For dynamic registration, `catalog.Register` returns an error that the caller should handle:
 
 ```go
 import (
@@ -330,7 +330,7 @@ import (
 )
 
 func init() {
-    catalog.Register("mycatalog", catalog.RegistrarFunc(
+    catalog.MustRegister("mycatalog", catalog.RegistrarFunc(
         func(ctx context.Context, name string, props iceberg.Properties) (catalog.Catalog, error) {
             return newMyCatalog(name, props)
         },
