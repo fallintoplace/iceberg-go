@@ -54,7 +54,7 @@ type RewriteResult struct {
 	// RemovedEqualityDeleteFiles is the count of equality delete files
 	// removed via [RewriteDataFilesOptions.ExtraDeleteFilesToRemove].
 	// The caller computes which eq-deletes are dead — typically via
-	// [compaction.CollectDeadEqualityDeletesWithSpecs] — and passes the list in.
+	// [compaction.CollectDeadEqualityDeletes] — and passes the list in.
 	RemovedEqualityDeleteFiles int
 
 	// RemovedDeletionVectorFiles is the count of deletion vectors removed
@@ -204,7 +204,7 @@ type RewriteDataFilesOptions struct {
 	// the rewrite and that the caller wants expunged in the same
 	// snapshot. Honored only when PartialProgress is false.
 	//
-	// Use [compaction.CollectDeadEqualityDeletesWithSpecs] and
+	// Use [compaction.CollectDeadEqualityDeletes] and
 	// [compaction.CollectDeadPositionDeletes] to compute this list
 	// from the current snapshot. Position deletes attached to
 	// rewritten tasks are already removed by the per-group staging;
@@ -320,7 +320,7 @@ func WithCompactionParquetRowGroupLimit(n int) CompactionGroupOption {
 //
 // Cleanup beyond that per-group staging is the caller's
 // responsibility: compute the dead sets with
-// [compaction.CollectDeadEqualityDeletesWithSpecs] and
+// [compaction.CollectDeadEqualityDeletes] and
 // [compaction.CollectDeadPositionDeletes] (against the same snapshot
 // the rewrite is staged on) and pass them via
 // [RewriteDataFilesOptions.ExtraDeleteFilesToRemove]. The executor
@@ -871,7 +871,7 @@ func rewriteValidatorWithReferencedDataFiles(
 // reading, the new output files will not contain the deleted rows.
 //
 // Only position deletes (EntryContentPosDeletes) are considered.
-// Equality deletes are decided by [compaction.DecideDeadEqualityDeletesWithSpecs]
+// Equality deletes are decided by [compaction.DecideDeadEqualityDeletes]
 // (which needs partition-wide visibility, not just the task scope).
 // Deletion vectors will be handled when DV read support lands.
 //

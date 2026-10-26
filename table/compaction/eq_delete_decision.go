@@ -27,19 +27,10 @@ import (
 	"github.com/apache/iceberg-go/internal"
 )
 
-// SurvivorSurvey describes the surviving data files in a snapshot after a
-// planned rewrite has logically removed its rewrite set. It is the input to
-// [DecideDeadEqualityDeletes] and [DecideDeadEqualityDeletesWithSpecs].
-//
-// EmptyPartMinSeq and PartMinSeq retain the original survey layout used by
-// DecideDeadEqualityDeletes. Spec-aware callers should populate the survey
-// with [SurvivorSurvey.AddSurvivorWithSpec].
-//
-// Sentinel "no survivor in this bucket" is math.MaxInt64.
+// SurvivorSurvey tracks the lowest sequence number among surviving data files
+// by partition spec and partition values. An unpartitioned equality delete
+// applies to all survivors, so the global minimum is retained too.
 type SurvivorSurvey struct {
-	EmptyPartMinSeq int64
-	PartMinSeq      map[string]int64
-
 	minSeq         int64
 	specPartMinSeq map[string]int64
 }
@@ -49,68 +40,23 @@ type PartitionSpecLookup interface {
 	PartitionSpecByID(int) *iceberg.PartitionSpec
 }
 
-// NewSurvivorSurvey returns a survey initialized with the no-survivor
-// sentinel for the empty-partition bucket and an empty per-partition
-// map. Callers populate via AddSurvivor.
+// NewSurvivorSurvey returns an initially empty survey.
 func NewSurvivorSurvey() *SurvivorSurvey {
 	return &SurvivorSurvey{
-		EmptyPartMinSeq: math.MaxInt64,
-		PartMinSeq:      make(map[string]int64),
-		minSeq:          math.MaxInt64,
-		specPartMinSeq:  make(map[string]int64),
+		minSeq:         math.MaxInt64,
+		specPartMinSeq: make(map[string]int64),
 	}
 }
 
-// AddSurvivor records a surviving data file's partition and sequence number
-// using the conservative compatibility rule.
-//
-// Defensive: if seq < 0 (sentinel for "unset"), the file is recorded
-// with seq=0 (smallest real value), which keeps it permanently alive
-// against every eq-delete. Better to preserve uncertain state than to
-// drop deletes that may still apply.
-func (s *SurvivorSurvey) AddSurvivor(partition map[int]any, seq int64) {
+// AddSurvivor records a surviving data file's spec ID, partition, and sequence.
+// A negative sequence is treated as zero to avoid prematurely deleting files.
+func (s *SurvivorSurvey) AddSurvivor(specID int32, partition map[int]any, seq int64) {
 	if seq < 0 {
 		seq = 0
-	}
-	if len(partition) == 0 {
-		s.EmptyPartMinSeq = min(seq, s.EmptyPartMinSeq)
-
-		return
-	}
-
-	updatePartitionMinSeq(s.PartMinSeq, partitionMatchKey(partition), seq)
-}
-
-// AddSurvivorWithSpec records a surviving data file's spec ID, partition, and
-// sequence number for exact equality-delete matching. It also maintains the
-// conservative survey used by [DecideDeadEqualityDeletes].
-func (s *SurvivorSurvey) AddSurvivorWithSpec(specID int32, partition map[int]any, seq int64) {
-	if seq < 0 {
-		seq = 0
-	}
-
-	var specKey string
-	if len(partition) == 0 {
-		s.EmptyPartMinSeq = min(seq, s.EmptyPartMinSeq)
-		specKey = partitionBucketKey(specID, partition)
-	} else {
-		tuple := appendPartitionTuple(nil, partition)
-		updatePartitionMinSeq(s.PartMinSeq, string(tuple), seq)
-		specKey = partitionBucketKeyFromTuple(specID, tuple)
 	}
 
 	s.minSeq = min(seq, s.minSeq)
-
-	updatePartitionMinSeq(s.specPartMinSeq, specKey, seq)
-}
-
-func (s *SurvivorSurvey) conservativeMinSeq() int64 {
-	minSeq := s.EmptyPartMinSeq
-	for _, seq := range s.PartMinSeq {
-		minSeq = min(minSeq, seq)
-	}
-
-	return minSeq
+	updatePartitionMinSeq(s.specPartMinSeq, partitionBucketKey(specID, partition), seq)
 }
 
 func (s *SurvivorSurvey) specAwareApplicableMinSeq(
@@ -128,41 +74,9 @@ func (s *SurvivorSurvey) specAwareApplicableMinSeq(
 	return math.MaxInt64
 }
 
-// DecideDeadEqualityDeletes conservatively returns equality-delete files that
-// are dead without partition spec metadata. Because a non-empty partition
-// tuple may belong to a void-only spec whose deletes apply globally, this
-// compatibility API assumes every candidate could be global. It may preserve
-// deletes that exact spec-aware matching can prove dead. New callers with
-// table metadata should use [DecideDeadEqualityDeletesWithSpecs].
-func DecideDeadEqualityDeletes(survey *SurvivorSurvey, candidates []iceberg.ManifestEntry) []iceberg.DataFile {
-	if survey == nil || len(candidates) == 0 {
-		return nil
-	}
-
-	dead := make([]iceberg.DataFile, 0, len(candidates))
-	seen := make(map[string]struct{}, len(candidates))
-	minSeq := survey.conservativeMinSeq()
-	for _, e := range candidates {
-		df := e.DataFile()
-		path := df.FilePath()
-		if _, ok := seen[path]; ok {
-			continue
-		}
-		if e.DataSequenceNumber() < 0 {
-			continue
-		}
-		if minSeq >= e.DataSequenceNumber() {
-			seen[path] = struct{}{}
-			dead = append(dead, df)
-		}
-	}
-
-	return dead
-}
-
-// DecideDeadEqualityDeletesWithSpecs is the exact spec-aware predicate for
+// DecideDeadEqualityDeletes is the exact spec-aware predicate for
 // equality-delete cleanup during compaction. Given a survey of surviving data
-// file sequences populated with [SurvivorSurvey.AddSurvivorWithSpec], it
+// file sequences populated with [SurvivorSurvey.AddSurvivor], it
 // returns the equality-delete files that no surviving data file could apply to.
 //
 // The cleanup rule is:
@@ -181,13 +95,16 @@ func DecideDeadEqualityDeletes(survey *SurvivorSurvey, candidates []iceberg.Mani
 //
 // Dedup by file path: the same eq-delete file may appear in multiple
 // manifest entries after manifest merging.
-func DecideDeadEqualityDeletesWithSpecs(
+func DecideDeadEqualityDeletes(
 	survey *SurvivorSurvey,
 	candidates []iceberg.ManifestEntry,
 	specs PartitionSpecLookup,
 ) ([]iceberg.DataFile, error) {
 	if survey == nil || len(candidates) == 0 {
 		return nil, nil
+	}
+	if specs == nil {
+		return nil, fmt.Errorf("%w: partition spec lookup is required", iceberg.ErrInvalidArgument)
 	}
 
 	dead := make([]iceberg.DataFile, 0, len(candidates))
@@ -221,16 +138,6 @@ func DecideDeadEqualityDeletesWithSpecs(
 	}
 
 	return dead, nil
-}
-
-// partitionMatchKey returns a deterministic key for a partition tuple without
-// a spec ID. It is used only by the conservative compatibility API.
-func partitionMatchKey(part map[int]any) string {
-	if len(part) == 0 {
-		return ""
-	}
-
-	return string(appendPartitionTuple(nil, part))
 }
 
 // partitionBucketKey returns a deterministic string key for a

@@ -19,6 +19,7 @@ package compaction
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/internal"
@@ -26,52 +27,15 @@ import (
 	"github.com/apache/iceberg-go/table"
 )
 
-// CollectDeadEqualityDeletes walks the given snapshot's manifests and returns
-// equality delete files that are provably dead after a rewrite removes the
-// data files in rewrittenPaths. It preserves the original conservative API,
-// which treats every candidate as potentially global because it has no spec
-// metadata. New callers should use [CollectDeadEqualityDeletesWithSpecs].
+// CollectDeadEqualityDeletes returns equality-delete files that cannot apply
+// to any surviving data file after a rewrite removes rewrittenPaths.
+// Partition specs and data sequence numbers determine applicability;
+// unpartitioned equality deletes can apply to data in any partition.
 //
-// "Dead" means: no surviving data file in the snapshot (excluding
-// rewrittenPaths) could apply to the eq-delete under the conservative
-// compatibility predicate (see [DecideDeadEqualityDeletes]).
-//
-// rewrittenPaths is the union of every old data file path being
-// replaced by a planned rewrite (across all groups). The caller
-// typically computes this from a compaction plan.
-//
-// The returned files are safe to remove during the same commit that
-// stages the rewrite — they cannot be resurrected by any concurrent
-// commit because (1) any concurrent eq-delete is rejected by the
-// rewrite-validator, and (2) any concurrent data file gets a fresh
-// sequence number strictly greater than every preexisting eq-delete,
-// so it cannot satisfy E.seq > D.seq for any preexisting E.
-//
-// Two-pass design: the first pass walks delete manifests only to
-// discover candidate eq-deletes; if there are none, the more
-// expensive data-manifest walk is skipped.
+// The scan walks delete manifests first and skips data manifests when no
+// equality-delete candidates exist. The returned files can be removed in
+// the same commit as the rewrite.
 func CollectDeadEqualityDeletes(
-	ctx context.Context,
-	fs iceio.IO,
-	snap *table.Snapshot,
-	rewrittenPaths map[string]struct{},
-) ([]iceberg.DataFile, error) {
-	return collectDeadEqualityDeletes(ctx, fs, nil, snap, rewrittenPaths)
-}
-
-// CollectDeadEqualityDeletesWithSpecs walks the given snapshot's manifests and
-// uses partition spec metadata to identify dead equality deletes exactly.
-func CollectDeadEqualityDeletesWithSpecs(
-	ctx context.Context,
-	fs iceio.IO,
-	specs PartitionSpecLookup,
-	snap *table.Snapshot,
-	rewrittenPaths map[string]struct{},
-) ([]iceberg.DataFile, error) {
-	return collectDeadEqualityDeletes(ctx, fs, specs, snap, rewrittenPaths)
-}
-
-func collectDeadEqualityDeletes(
 	ctx context.Context,
 	fs iceio.IO,
 	specs PartitionSpecLookup,
@@ -80,6 +44,9 @@ func collectDeadEqualityDeletes(
 ) ([]iceberg.DataFile, error) {
 	if snap == nil || len(rewrittenPaths) == 0 {
 		return nil, nil
+	}
+	if specs == nil {
+		return nil, fmt.Errorf("%w: partition spec lookup is required", iceberg.ErrInvalidArgument)
 	}
 
 	manifests, err := snap.Manifests(fs)
@@ -131,17 +98,9 @@ func collectDeadEqualityDeletes(
 				continue
 			}
 			partition := internal.BorrowedDataFilePartition(df)
-			if specs == nil {
-				survey.AddSurvivor(partition, e.DataSequenceNumber())
-			} else {
-				survey.AddSurvivorWithSpec(df.SpecID(), partition, e.DataSequenceNumber())
-			}
+			survey.AddSurvivor(df.SpecID(), partition, e.DataSequenceNumber())
 		}
 	}
 
-	if specs == nil {
-		return DecideDeadEqualityDeletes(survey, candidates), nil
-	}
-
-	return DecideDeadEqualityDeletesWithSpecs(survey, candidates, specs)
+	return DecideDeadEqualityDeletes(survey, candidates, specs)
 }

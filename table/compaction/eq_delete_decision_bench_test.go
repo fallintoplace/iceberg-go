@@ -30,7 +30,7 @@ var (
 	benchmarkSurvivorSurvey      *compaction.SurvivorSurvey
 )
 
-func BenchmarkAddSurvivorWithSpec(b *testing.B) {
+func BenchmarkAddSurvivor(b *testing.B) {
 	for _, fields := range []int{1, 8, 32} {
 		for _, kind := range []string{"int32", "string", "date"} {
 			b.Run(fmt.Sprintf("fields=%d/%s", fields, kind), func(b *testing.B) {
@@ -50,7 +50,7 @@ func BenchmarkAddSurvivorWithSpec(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for range b.N {
-					survey.AddSurvivorWithSpec(1, partition, 10)
+					survey.AddSurvivor(1, partition, 10)
 				}
 				b.StopTimer()
 				benchmarkSurvivorSurvey = survey
@@ -74,7 +74,7 @@ func BenchmarkDecideDeadEqualityDeletes(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			survey := compaction.NewSurvivorSurvey()
 			for i := range tc.partitions {
-				survey.AddSurvivor(map[int]any{1000: i}, 10)
+				survey.AddSurvivor(1, map[int]any{1000: i}, 10)
 			}
 
 			specs := compactionTestSpecs()
@@ -86,11 +86,15 @@ func BenchmarkDecideDeadEqualityDeletes(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
+			var err error
 			for range b.N {
-				benchmarkDeadEqualityDeletes = compaction.DecideDeadEqualityDeletes(
-					survey, candidates)
+				benchmarkDeadEqualityDeletes, err = compaction.DecideDeadEqualityDeletes(
+					survey, candidates, specs)
 			}
 			b.StopTimer()
+			if err != nil {
+				b.Fatal(err)
+			}
 			if len(benchmarkDeadEqualityDeletes) != tc.deletes {
 				b.Fatalf("expected %d dead equality deletes, got %d", tc.deletes, len(benchmarkDeadEqualityDeletes))
 			}

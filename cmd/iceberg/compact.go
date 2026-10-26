@@ -145,7 +145,7 @@ func compactRun(ctx context.Context, output Output, tbl *table.Table, plan compa
 					rewrittenSet[task.File.FilePath()] = struct{}{}
 				}
 			}
-			deadEqDeletes, err := compaction.CollectDeadEqualityDeletesWithSpecs(
+			deadEqDeletes, err := compaction.CollectDeadEqualityDeletes(
 				ctx, fs, tbl.Metadata(), snap, rewrittenSet)
 			if err != nil {
 				output.Error(fmt.Errorf("collect dead equality deletes: %w", err))
