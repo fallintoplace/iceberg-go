@@ -779,19 +779,30 @@ func TestTypeIFaceMarshalJSONNilType(t *testing.T) {
 	assert.ErrorIs(t, err, iceberg.ErrInvalidSchema)
 }
 
-func TestPropUInt(t *testing.T) {
+func TestPropertiesGetUInt(t *testing.T) {
 	props := iceberg.Properties{
 		"n":       "42",
 		"neg":     "-7",
 		"garbage": "not-a-number",
 		"maxuint": "18446744073709551615",
+		"overflow": "18446744073709551616",
 	}
 
-	assert.Equal(t, uint(42), iceberg.PropUInt(props, "n", 0))
-	assert.Equal(t, uint(99), iceberg.PropUInt(props, "neg", 99),
+	assert.Equal(t, uint(42), props.GetUInt("n", 0))
+	assert.Equal(t, uint(99), props.GetUInt("neg", 99),
 		"negative string must fall back, not wrap to a huge positive")
-	assert.Equal(t, uint(77), iceberg.PropUInt(props, "garbage", 77), "falls back on parse error")
-	assert.Equal(t, uint(5), iceberg.PropUInt(props, "missing", 5), "falls back on missing key")
+	assert.Equal(t, uint(77), props.GetUInt("garbage", 77), "falls back on parse error")
+	assert.Equal(t, uint(5), props.GetUInt("missing", 5), "falls back on missing key")
+	assert.Equal(t, uint(8), props.GetUInt("overflow", 8), "falls back on uint64 overflow")
+	assert.Equal(t, uint(6), (iceberg.Properties(nil)).GetUInt("missing", 6),
+		"nil property maps fall back to the default")
+	if uint64(^uint(0)) == math.MaxUint64 {
+		assert.Equal(t, ^uint(0), props.GetUInt("maxuint", 7),
+			"64-bit uint preserves the maximum uint64 value")
+	} else {
+		assert.Equal(t, uint(7), props.GetUInt("maxuint", 7),
+			"32-bit uint falls back when the parsed value is too large")
+	}
 	assert.Equal(t, uint64(math.MaxUint64), props.GetUInt64("maxuint", 0),
 		"GetUInt64 must preserve the full uint64 range")
 }

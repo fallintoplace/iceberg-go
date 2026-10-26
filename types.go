@@ -110,10 +110,10 @@ func (p Properties) GetUInt64(key string, defVal uint64) uint64 {
 	return n
 }
 
-// PropUInt reads an unsigned-integer property by key, preserving the legacy
-// fallback behavior while avoiding truncation on platforms where uint is
-// narrower than uint64.
-func PropUInt(p Properties, key string, defVal uint) uint {
+// GetUInt reads an unsigned-integer property by key. Missing, malformed, or
+// out-of-range values return defVal, including values that fit in uint64 but
+// not in uint on 32-bit platforms.
+func (p Properties) GetUInt(key string, defVal uint) uint {
 	n := p.GetUInt64(key, uint64(defVal))
 	if uint64(uint(n)) != n {
 		return defVal
