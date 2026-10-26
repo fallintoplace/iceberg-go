@@ -341,9 +341,9 @@ type Metadata interface {
 	// PartitionSpecByID returns the partition spec with the given ID. Returns
 	// nil if the ID is not found in the list of partition specs.
 	PartitionSpecByID(int) *iceberg.PartitionSpec
-	// DefaultPartitionSpec is the ID of the current spec that writerFactory should
-	// use by default.
-	DefaultPartitionSpec() int
+	// DefaultPartitionSpecID returns the ID of the spec new data files should
+	// use by default. Use PartitionSpec to retrieve the spec.
+	DefaultPartitionSpecID() int
 	// LastPartitionSpecID returns the persisted last assigned partition field ID,
 	// which may be stale relative to partition spec history.
 	LastPartitionSpecID() *int
@@ -371,9 +371,9 @@ type Metadata interface {
 	SortOrder() SortOrder
 	// SortOrders returns the list of sort orders in the table.
 	SortOrders() []SortOrder
-	// DefaultSortOrder returns the ID of the current sort order that writerFactory
-	// should use by default.
-	DefaultSortOrder() int
+	// DefaultSortOrderID returns the ID of the sort order new data files should
+	// use by default. Use SortOrder to retrieve the sort order.
+	DefaultSortOrderID() int
 	// Properties is a string to string map of table properties. This is used
 	// to control settings that affect reading and writing and is not intended
 	// to be used for arbitrary metadata. For example, commit.retry.num-retries
@@ -511,8 +511,8 @@ func MetadataBuilderFromBase(metadata Metadata, currentFileLocation string) (*Me
 		}
 
 		b.currentSchemaID = common.CurrentSchemaID
-		b.defaultSpecID = metadata.DefaultPartitionSpec()
-		b.defaultSortOrderID = metadata.DefaultSortOrder()
+		b.defaultSpecID = metadata.DefaultPartitionSpecID()
+		b.defaultSortOrderID = metadata.DefaultSortOrderID()
 		b.schemaList = cloneSchemas(common.SchemaList)
 		b.specs = clonePartitionSpecs(common.Specs)
 		b.lastPartitionID = clonePtr(common.LastPartitionID)
@@ -561,13 +561,13 @@ func MetadataBuilderFromBase(metadata Metadata, currentFileLocation string) (*Me
 		}
 		b.currentSchemaID = currentSchema.ID
 		b.specs = slices.Clone(metadata.PartitionSpecs())
-		b.defaultSpecID = metadata.DefaultPartitionSpec()
+		b.defaultSpecID = metadata.DefaultPartitionSpecID()
 		b.lastPartitionID = metadata.LastPartitionSpecID()
 		b.props = maps.Clone(metadata.Properties())
 		b.snapshotList = slices.Clone(metadata.Snapshots())
 		b.snapshotIndex = buildSnapshotIndex(b.snapshotList)
 		b.sortOrderList = slices.Clone(metadata.SortOrders())
-		b.defaultSortOrderID = metadata.DefaultSortOrder()
+		b.defaultSortOrderID = metadata.DefaultSortOrderID()
 		if metadata.FormatVersion() > 1 {
 			seq := metadata.LastSequenceNumber()
 			b.lastSequenceNumber = &seq
@@ -2562,7 +2562,7 @@ func (c *commonMetadata) PartitionSpecs() []iceberg.PartitionSpec {
 	return clonePartitionSpecs(c.Specs)
 }
 
-func (c *commonMetadata) DefaultPartitionSpec() int {
+func (c *commonMetadata) DefaultPartitionSpecID() int {
 	return c.DefaultSpecID
 }
 
@@ -2697,7 +2697,7 @@ func (c *commonMetadata) SortOrder() SortOrder {
 	return cloneSortOrder(UnsortedSortOrder)
 }
 
-func (c *commonMetadata) DefaultSortOrder() int {
+func (c *commonMetadata) DefaultSortOrderID() int {
 	return c.DefaultSortOrderID
 }
 
@@ -3056,7 +3056,7 @@ func (c *commonMetadata) validate() error {
 		return fmt.Errorf("%w: missing partition-specs", ErrInvalidMetadata)
 	case c.DefaultSortOrderID < 0 && c.FormatVersion > 1:
 		return fmt.Errorf("%w: default-sort-order-id must be set for FormatVersion > 1", ErrInvalidMetadata)
-	case c.DefaultPartitionSpec() < 0 && c.FormatVersion > 1:
+	case c.DefaultPartitionSpecID() < 0 && c.FormatVersion > 1:
 		return fmt.Errorf("%w: default-partition-spec-id must be set for FormatVersion > 1", ErrInvalidMetadata)
 	case c.LastPartitionID == nil:
 		if c.FormatVersion > 1 {

@@ -433,8 +433,8 @@ func (a *assertDefaultSpecId) Validate(meta Metadata) error {
 		return errors.New("Requirement failed: current table metadata does not exist")
 	}
 
-	if meta.DefaultPartitionSpec() != a.DefaultSpecID {
-		return fmt.Errorf("Requirement failed: default spec id has changed: expected %d, found %d", a.DefaultSpecID, meta.DefaultPartitionSpec())
+	if meta.DefaultPartitionSpecID() != a.DefaultSpecID {
+		return fmt.Errorf("Requirement failed: default spec id has changed: expected %d, found %d", a.DefaultSpecID, meta.DefaultPartitionSpecID())
 	}
 
 	return nil
@@ -459,8 +459,8 @@ func (a *assertDefaultSortOrderId) Validate(meta Metadata) error {
 		return errors.New("requirement failed: current table metadata does not exist")
 	}
 
-	if meta.DefaultSortOrder() != a.DefaultSortOrderID {
-		return fmt.Errorf("requirement failed: default sort order id has changed: expected %d, found %d", a.DefaultSortOrderID, meta.DefaultSortOrder())
+	if meta.DefaultSortOrderID() != a.DefaultSortOrderID {
+		return fmt.Errorf("requirement failed: default sort order id has changed: expected %d, found %d", a.DefaultSortOrderID, meta.DefaultSortOrderID())
 	}
 
 	return nil

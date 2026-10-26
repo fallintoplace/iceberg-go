@@ -762,7 +762,7 @@ func TestPositionDeleteUnpartitionedSortOrderID(t *testing.T) {
 
 	built, err := metadataBuilder.Build()
 	require.NoError(t, err)
-	require.NotZero(t, built.DefaultSortOrder(), "sanity: sort order id should be non-zero")
+	require.NotZero(t, built.DefaultSortOrderID(), "sanity: sort order id should be non-zero")
 
 	writeUUID := uuid.New()
 	rb := mustLoadRecordBatchFromJSON(PositionalDeleteArrowSchema, `[{"file_path": "file://unpartitioned/test.parquet", "pos": 0}]`)
@@ -818,7 +818,7 @@ func TestEqualityDeleteUnpartitionedSortOrderID(t *testing.T) {
 
 	built, err := metadataBuilder.Build()
 	require.NoError(t, err)
-	require.NotZero(t, built.DefaultSortOrder(), "sanity: sort order id should be non-zero")
+	require.NotZero(t, built.DefaultSortOrderID(), "sanity: sort order id should be non-zero")
 
 	delArrowSc, err := SchemaToArrowSchema(delSchema, nil, true, false)
 	require.NoError(t, err)

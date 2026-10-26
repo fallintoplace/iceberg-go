@@ -82,7 +82,7 @@ func deriveRequirements(base Metadata, isReplace bool, first Requirement, update
 		add(reqAssertCurrentSchemaID, AssertCurrentSchemaID(base.CurrentSchema().ID))
 	}
 	addDefaultSpec := func() {
-		add(reqAssertDefaultSpecID, AssertDefaultSpecID(base.DefaultPartitionSpec()))
+		add(reqAssertDefaultSpecID, AssertDefaultSpecID(base.DefaultPartitionSpecID()))
 	}
 
 	for _, u := range updates {
@@ -106,7 +106,7 @@ func deriveRequirements(base Metadata, isReplace bool, first Requirement, update
 			}
 		case *setDefaultSortOrderUpdate:
 			if !isReplace {
-				add(reqAssertDefaultSortOrderID, AssertDefaultSortOrderID(base.DefaultSortOrder()))
+				add(reqAssertDefaultSortOrderID, AssertDefaultSortOrderID(base.DefaultSortOrderID()))
 			}
 		case *removeSpecUpdate:
 			if !isReplace {

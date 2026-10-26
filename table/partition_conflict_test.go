@@ -589,7 +589,7 @@ func TestRowDeltaValidate_SpecEvolutionConflictDetected(t *testing.T) {
 	// Spec A: identity(region) — the original partition spec.
 	// partitionedConflictMeta assigns specID=0 and partitionFieldID=1000.
 	initialMeta := partitionedConflictMeta(t, schema, 2, nil) // no snapshot yet
-	specAID := initialMeta.DefaultPartitionSpec()             // = 0
+	specAID := initialMeta.DefaultPartitionSpecID()             // = 0
 
 	// Add spec B to the metadata: same source field, renamed partition field
 	// ("region_v2") — simulating a partition-spec evolution.  The builder

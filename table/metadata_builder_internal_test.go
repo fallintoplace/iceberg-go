@@ -177,8 +177,8 @@ func TestBuildUnpartitionedUnsorted(t *testing.T) {
 	require.Equal(t, 2, meta.FormatVersion())
 	require.Equal(t, TestLocation, meta.Location())
 	require.Equal(t, 0, meta.CurrentSchema().ID)
-	require.Equal(t, 0, meta.DefaultPartitionSpec())
-	require.Equal(t, 0, meta.DefaultSortOrder())
+	require.Equal(t, 0, meta.DefaultPartitionSpecID())
+	require.Equal(t, 0, meta.DefaultSortOrderID())
 	require.Equal(t, 999, *meta.LastPartitionSpecID())
 	require.Equal(t, 3, meta.LastColumnID())
 	require.Equal(t, 0, len(meta.Snapshots()))
@@ -329,7 +329,7 @@ func TestAddRemovePartitionSpec(t *testing.T) {
 		iceberg.AddPartitionFieldBySourceID(2, "y", iceberg.IdentityTransform{}, builder.schemaList[0], &i),
 		iceberg.AddPartitionFieldBySourceID(3, "z", iceberg.IdentityTransform{}, builder.schemaList[0], &i2))
 	require.NoError(t, err)
-	require.Equal(t, metadata.DefaultPartitionSpec(), 0)
+	require.Equal(t, metadata.DefaultPartitionSpecID(), 0)
 	require.Equal(t, *metadata.LastPartitionSpecID(), i2)
 	found := false
 	for _, part := range metadata.PartitionSpecs() {
@@ -545,7 +545,7 @@ func TestSetDefaultPartitionSpec(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, metadata)
 
-	require.Equal(t, metadata.DefaultPartitionSpec(), 1)
+	require.Equal(t, metadata.DefaultPartitionSpecID(), 1)
 	require.True(t, expectedSpec.Equals(metadata.PartitionSpec()), fmt.Sprintf("expected partition spec to match added spec %s, %s", spew.Sdump(expectedSpec), spew.Sdump(metadata.PartitionSpec())))
 	require.Equal(t, *metadata.LastPartitionSpecID(), 1001)
 }
@@ -576,7 +576,7 @@ func TestSetExistingDefaultPartitionSpec(t *testing.T) {
 	metadata, err := builder.Build()
 	require.NoError(t, err)
 	require.NotNil(t, metadata)
-	require.Equal(t, 1, metadata.DefaultPartitionSpec())
+	require.Equal(t, 1, metadata.DefaultPartitionSpecID())
 
 	require.True(t, expectedSpec.Equals(metadata.PartitionSpec()), "expected partition spec to match added spec")
 
@@ -593,7 +593,7 @@ func TestSetExistingDefaultPartitionSpec(t *testing.T) {
 	newBuild, err := newBuilder.Build()
 	require.NoError(t, err)
 	require.NotNil(t, newBuild)
-	require.Equal(t, 0, newBuild.DefaultPartitionSpec(), "expected default partition spec to be set to 0")
+	require.Equal(t, 0, newBuild.DefaultPartitionSpecID(), "expected default partition spec to be set to 0")
 
 	newWithoutChanges := builderWithoutChanges(2)
 	require.True(t, newWithoutChanges.specs[0].Equals(newBuild.PartitionSpec()), "expected partition spec to match added spec")
@@ -690,7 +690,7 @@ func TestAddSortOrderReuseDoesNotDuplicateUpdate(t *testing.T) {
 		}
 		meta, err := builder.Build()
 		require.NoError(t, err)
-		require.Equal(t, wantDefault, meta.DefaultSortOrder())
+		require.Equal(t, wantDefault, meta.DefaultSortOrderID())
 	}
 
 	orderA := sortOrder()
@@ -703,12 +703,12 @@ func TestAddSortOrderReuseDoesNotDuplicateUpdate(t *testing.T) {
 		base := buildBase(t)
 
 		withA, updates := replace(t, base, orderA)
-		require.Equal(t, 1, countAddSortOrder(updates, withA.DefaultSortOrder()))
-		require.NotEqual(t, UnsortedSortOrderID, withA.DefaultSortOrder())
-		replay(t, base, updates, withA.DefaultSortOrder())
+		require.Equal(t, 1, countAddSortOrder(updates, withA.DefaultSortOrderID()))
+		require.NotEqual(t, UnsortedSortOrderID, withA.DefaultSortOrderID())
+		replay(t, base, updates, withA.DefaultSortOrderID())
 
 		backToUnsorted, updates := replace(t, withA, UnsortedSortOrder)
-		require.Equal(t, UnsortedSortOrderID, backToUnsorted.DefaultSortOrder())
+		require.Equal(t, UnsortedSortOrderID, backToUnsorted.DefaultSortOrderID())
 		require.Zero(t, countAddSortOrder(updates, UnsortedSortOrderID),
 			"re-adding the existing unsorted order must not emit add-sort-order")
 		require.Len(t, updates, 1)
@@ -720,16 +720,16 @@ func TestAddSortOrderReuseDoesNotDuplicateUpdate(t *testing.T) {
 	t.Run("A to B to A", func(t *testing.T) {
 		base := buildBase(t)
 		withA, _ := replace(t, base, orderA)
-		aID := withA.DefaultSortOrder()
+		aID := withA.DefaultSortOrderID()
 
 		withB, updates := replace(t, withA, orderB)
-		bID := withB.DefaultSortOrder()
+		bID := withB.DefaultSortOrderID()
 		require.NotEqual(t, aID, bID)
 		require.Equal(t, 1, countAddSortOrder(updates, bID))
 		replay(t, withA, updates, bID)
 
 		backToA, updates := replace(t, withB, orderA)
-		require.Equal(t, aID, backToA.DefaultSortOrder())
+		require.Equal(t, aID, backToA.DefaultSortOrderID())
 		require.Zero(t, countAddSortOrder(updates, aID),
 			"re-adding existing order A must not emit add-sort-order")
 		require.Len(t, updates, 1)

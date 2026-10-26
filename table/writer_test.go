@@ -197,7 +197,7 @@ func TestWriteFileHonorsExplicitSortOrderID(t *testing.T) {
 
 	built, err := metadataBuilder.Build()
 	require.NoError(t, err)
-	claimedID := built.DefaultSortOrder()
+	claimedID := built.DefaultSortOrderID()
 	require.NotZero(t, claimedID, "sanity: sort order id should be non-zero")
 
 	arrowSc, err := SchemaToArrowSchema(schema, nil, true, false)
