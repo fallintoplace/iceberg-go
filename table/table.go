@@ -95,13 +95,14 @@ type CatalogIO interface {
 }
 
 type Table struct {
-	identifier       Identifier
-	metadata         Metadata
-	metadataLocation string
-	cat              CatalogIO
-	fsF              FSysF
-	manifestCache    *snapshotManifestCache
-	planner          ScanPlanner
+	identifier           Identifier
+	metadata             Metadata
+	metadataLocation     string
+	cat                  CatalogIO
+	fsF                  FSysF
+	manifestCache        *snapshotManifestCache
+	manifestContentCache *manifestContentCache
+	planner              ScanPlanner
 	// scanPlanningIOProps are the table-scoped FileIO properties supplied by a
 	// catalog load response. They are separate from metadata properties because
 	// REST catalogs can return FileIO configuration in the response's config
@@ -173,20 +174,9 @@ func (t Table) LocationProvider() (LocationProvider, error) {
 }
 
 func (t Table) NewTransaction() *Transaction {
-	txn, err := t.NewTransactionOnBranchWithError(MainBranch)
+	txn, err := t.NewTransactionOnBranch(MainBranch)
 	if err != nil {
 		return t.newBrokenTransaction(MainBranch, err)
-	}
-
-	return txn
-}
-
-// NewTransactionOnBranch creates a new transaction that commits to the named
-// branch. Use [NewTransaction] to commit to the default "main" branch.
-func (t Table) NewTransactionOnBranch(branch string) *Transaction {
-	txn, err := t.NewTransactionOnBranchWithError(branch)
-	if err != nil {
-		return t.newBrokenTransaction(branch, err)
 	}
 
 	return txn
@@ -201,13 +191,12 @@ func (t Table) newBrokenTransaction(branch string, err error) *Transaction {
 	}
 }
 
-// NewTransactionOnBranchWithError creates a new transaction and returns any metadata
-// initialization error that prevents builder construction.
-//
-// This preserves the old non-failing constructor contract while allowing
-// callers to receive the precise initialization error instead of hitting
-// panic/undefined behavior later.
-func (t Table) NewTransactionOnBranchWithError(branch string) (*Transaction, error) {
+// NewTransactionOnBranch creates a transaction that commits to the named
+// branch. Initialization failures and attempts to target a tag are returned
+// immediately instead of being stored in a broken transaction.
+// A missing branch is allowed; its absence is checked at commit time.
+// Use [NewTransaction] to target the default "main" branch.
+func (t Table) NewTransactionOnBranch(branch string) (*Transaction, error) {
 	for name, ref := range t.metadata.Refs() {
 		if name != branch {
 			continue
@@ -249,6 +238,7 @@ func (t *Table) Refresh(ctx context.Context) error {
 	t.fsF = fresh.fsF
 	t.metadataLocation = fresh.metadataLocation
 	t.manifestCache = newSnapshotManifestCacheForMetadata(fresh.metadata)
+	t.manifestContentCache = reuseManifestContentCache(t.manifestContentCache, fresh.manifestContentCache)
 	t.planner = fresh.planner
 	t.scanPlanningIOProps = maps.Clone(fresh.scanPlanningIOProps)
 	t.scanPlanningDirective = fresh.scanPlanningDirective
@@ -659,8 +649,11 @@ func (t Table) doCommit(ctx context.Context, updates []Update, reqs []Requiremen
 		if !cleanupOrphans || len(orphanedManifests) == 0 {
 			return
 		}
+		// The commit may have failed because ctx was canceled; remove the
+		// orphans without that cancellation so they are not left behind.
+		cleanupCtx := context.WithoutCancel(ctx)
 		for _, path := range orphanedManifests {
-			if removeErr := wfs.Remove(path); removeErr != nil {
+			if removeErr := wfs.Remove(cleanupCtx, path); removeErr != nil {
 				log.Printf("Warning: failed to delete orphaned manifest list %s: %v", path, removeErr)
 			}
 		}
@@ -852,7 +845,7 @@ func (t Table) doCommit(ctx context.Context, updates []Update, reqs []Requiremen
 		}
 	}
 
-	return New(
+	next := New(
 		t.identifier,
 		newMeta,
 		newLoc,
@@ -863,7 +856,10 @@ func (t Table) doCommit(ctx context.Context, updates []Update, reqs []Requiremen
 		WithScanPlanningDirective(t.scanPlanningDirective, t.hasScanPlanningDirective),
 		WithLabels(t.labels),
 		WithSavedConfig(t.savedConfig),
-	), nil
+	)
+	next.manifestContentCache = reuseManifestContentCache(t.manifestContentCache, next.manifestContentCache)
+
+	return next, nil
 }
 
 // rewriteRefSnapshotRequirements returns a copy of reqs with every
@@ -1219,7 +1215,8 @@ func deleteOldMetadata(fs icebergio.IO, baseMeta, newMeta Metadata) {
 		toRemove := internal.Difference(removedPrevious, currentMetadata)
 
 		for _, file := range toRemove {
-			if err := fs.Remove(file); err != nil {
+			// deleteOldMetadata is best-effort cleanup with no caller context.
+			if err := fs.Remove(context.Background(), file); err != nil {
 				// Log the error instead of raising it when deleting old metadata files, as an external entity like a compactor may have already deleted them
 				log.Printf("Warning: Failed to delete old metadata file: %s error: %v", file, err)
 			}
@@ -1370,22 +1367,23 @@ func WithArrowBatchSize(n int) ScanOption {
 func (t Table) Scan(opts ...ScanOption) *Scan {
 	directive, directiveErr := t.ScanPlanningDirective()
 	s := &Scan{
-		identifier:          slices.Clone(t.identifier),
-		metadata:            t.metadata,
-		metadataLocation:    t.metadataLocation,
-		ioF:                 t.fsF,
-		manifestCache:       t.manifestCache,
-		planner:             t.planner,
-		scanPlanningIOProps: maps.Clone(t.scanPlanningIOProps),
-		directive:           directive,
-		directiveErr:        directiveErr,
-		planningMode:        ScanPlanningLocal,
-		rowFilter:           iceberg.AlwaysTrue{},
-		selectedFields:      []string{"*"},
-		caseSensitive:       true,
-		limit:               ScanNoLimit,
-		concurrency:         runtime.GOMAXPROCS(0),
-		reporter:            t.MetricsReporter(),
+		identifier:           slices.Clone(t.identifier),
+		metadata:             t.metadata,
+		metadataLocation:     t.metadataLocation,
+		ioF:                  t.fsF,
+		manifestCache:        t.manifestCache,
+		manifestContentCache: t.manifestContentCache,
+		planner:              t.planner,
+		scanPlanningIOProps:  maps.Clone(t.scanPlanningIOProps),
+		directive:            directive,
+		directiveErr:         directiveErr,
+		planningMode:         ScanPlanningLocal,
+		rowFilter:            iceberg.AlwaysTrue{},
+		selectedFields:       []string{"*"},
+		caseSensitive:        true,
+		limit:                ScanNoLimit,
+		concurrency:          runtime.GOMAXPROCS(0),
+		reporter:             t.MetricsReporter(),
 	}
 
 	for _, opt := range opts {
@@ -1418,10 +1416,9 @@ func WithMetricsReporter(r metrics.Reporter) Option {
 	}
 }
 
-// WithScanPlanningIOProperties supplies the table-scoped FileIO properties
-// that a remote scan planner needs when it builds a plan-scoped FileIO. This
-// is intended for catalog implementations whose table-load response carries
-// FileIO configuration separately from table metadata properties.
+// WithScanPlanningIOProperties supplies FileIO/catalog properties for
+// manifest content caching and remote scan planning. These can include
+// settings returned separately from table metadata by a REST catalog.
 func WithScanPlanningIOProperties(props iceberg.Properties) Option {
 	if props == nil {
 		return noopTableOption
@@ -1499,6 +1496,14 @@ func New(ident Identifier, meta Metadata, metadataLocation string, fsF FSysF, ca
 	for _, opt := range opts {
 		opt(t)
 	}
+	// FileIO/catalog settings are the default. Per-table saved settings
+	// (including REST LoadTable overrides) take precedence when supplied.
+	cacheConfig := t.savedConfig
+	if len(t.scanPlanningIOProps) > 0 {
+		cacheConfig = maps.Clone(t.scanPlanningIOProps)
+		maps.Copy(cacheConfig, t.savedConfig)
+	}
+	t.manifestContentCache = newManifestContentCacheForConfig(cacheConfig)
 
 	return t
 }
@@ -1540,7 +1545,7 @@ func NewFromLocation(
 			return nil, err
 		}
 	} else {
-		f, err := fsys.Open(metalocation)
+		f, err := fsys.Open(ctx, metalocation)
 		if err != nil {
 			return nil, err
 		}
