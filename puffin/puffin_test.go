@@ -160,6 +160,53 @@ func TestWriterRejectsOperationsAfterShortWrite(t *testing.T) {
 	assert.Equal(t, callsAfterFailure, output.calls)
 }
 
+func TestWriterStateErrors(t *testing.T) {
+	operations := []struct {
+		action string
+		run    func(*puffin.Writer) error
+	}{
+		{"set properties", func(w *puffin.Writer) error { return w.SetProperties(nil) }},
+		{"clear properties", func(w *puffin.Writer) error { return w.ClearProperties() }},
+		{"set created-by", func(w *puffin.Writer) error { return w.SetCreatedBy("example") }},
+		{"add blob", func(w *puffin.Writer) error {
+			_, err := w.AddBlob(defaultBlobInput(), nil)
+
+			return err
+		}},
+		{"finish", func(w *puffin.Writer) error { return w.Finish() }},
+	}
+
+	t.Run("finalized", func(t *testing.T) {
+		writer, _ := newWriter()
+		require.NoError(t, writer.Finish())
+
+		for _, operation := range operations {
+			t.Run(operation.action, func(t *testing.T) {
+				assert.EqualError(t, operation.run(writer),
+					"puffin: cannot "+operation.action+": writer already finalized")
+			})
+		}
+	})
+
+	t.Run("failed", func(t *testing.T) {
+		failure := errors.New("injected partial write")
+		output := &partialFailWriter{failCall: 2, err: failure}
+		writer, err := puffin.NewWriter(output)
+		require.NoError(t, err)
+		_, err = writer.AddBlob(defaultBlobInput(), []byte("payload"))
+		require.ErrorIs(t, err, failure)
+
+		for _, operation := range operations {
+			t.Run(operation.action, func(t *testing.T) {
+				err := operation.run(writer)
+				assert.EqualError(t, err,
+					"puffin: cannot "+operation.action+": writer previously failed: injected partial write")
+				assert.ErrorIs(t, err, failure)
+			})
+		}
+	})
+}
+
 func validFile() []byte {
 	w, buf := newWriter()
 	w.Finish()
