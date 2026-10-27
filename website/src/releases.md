@@ -79,6 +79,8 @@ Per-release notes (highlights, breaking changes, contributors) are published on 
 
 - **File writes and directory walks now take an operation context.** Update `WriteFileIO` and `ListableIO` implementations and calls to `Create`, `WriteFile`, and `WalkDir` to pass `context.Context`; cloud writes and listings use it for cancellation.
 
+- **Snapshot-log time travel uses inclusive selection.** `table.SnapshotLogEntryAsOf` no longer takes an `inclusive` boolean. Call `SnapshotLogEntryAsOf(entries, timestampMs)` to select the latest log entry at or before the timestamp. Table, scan, and inspection behavior is unchanged.
+
 ## Verifying and producing releases
 
 If you are validating an RC or cutting a new release, see:

@@ -1182,7 +1182,7 @@ func backoffDuration(attempt uint, minMs, maxMs uint64) time.Duration {
 // measured in milliseconds since the Unix epoch. It returns nil when no
 // snapshot was current at or before that time.
 func (t Table) SnapshotAsOf(timestampMs int64) *Snapshot {
-	entry, ok := SnapshotLogEntryAsOf(t.metadata.SnapshotLogs(), timestampMs, true)
+	entry, ok := SnapshotLogEntryAsOf(t.metadata.SnapshotLogs(), timestampMs)
 	if ok {
 		return t.metadata.SnapshotByID(entry.SnapshotID)
 	}
