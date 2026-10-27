@@ -35,8 +35,8 @@ import (
 )
 
 // commitReportSink is registered once as a named reporter so an in-memory
-// catalog can select it via metrics-reporter-impl. Register panics on a
-// duplicate name, so registration is guarded by sync.Once.
+// catalog can select it via metrics-reporter-impl. MustRegister panics on
+// duplicate names, so registration is guarded by sync.Once.
 var (
 	commitReportSink         = &metrics.InMemoryReporter{}
 	registerCommitSinkOnce   sync.Once
@@ -45,7 +45,7 @@ var (
 
 func registerCommitReportSink() {
 	registerCommitSinkOnce.Do(func() {
-		metrics.Register(commitReportReporterName, func(map[string]string) (metrics.Reporter, error) {
+		metrics.MustRegister(commitReportReporterName, func(map[string]string) (metrics.Reporter, error) {
 			return commitReportSink, nil
 		})
 	})

@@ -57,32 +57,73 @@ func TestFromProperties(t *testing.T) {
 
 func TestRegister(t *testing.T) {
 	t.Run("factory is selectable via FromProperties", func(t *testing.T) {
-		Register("test-custom", func(props map[string]string) (Reporter, error) {
+		require.NoError(t, Register("test-custom", func(props map[string]string) (Reporter, error) {
 			return &InMemoryReporter{}, nil
-		})
+		}))
 		t.Cleanup(func() { Deregister("test-custom") })
 		r, err := FromProperties(map[string]string{ReporterImplKey: "test-custom"})
 		require.NoError(t, err)
 		assert.IsType(t, &InMemoryReporter{}, r)
 	})
 
-	t.Run("empty name panics", func(t *testing.T) {
-		assert.Panics(t, func() { Register("", func(map[string]string) (Reporter, error) { return NopReporter{}, nil }) })
+	t.Run("empty name returns error", func(t *testing.T) {
+		err := Register("", func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
+		require.ErrorContains(t, err, "empty name")
 	})
 
-	t.Run("nil factory panics", func(t *testing.T) {
-		assert.Panics(t, func() { Register("test-nil-factory", nil) })
+	t.Run("nil factory returns error", func(t *testing.T) {
+		err := Register("test-nil-factory", nil)
+		require.ErrorContains(t, err, "nil factory")
+		_, err = FromProperties(map[string]string{ReporterImplKey: "test-nil-factory"})
+		assert.ErrorContains(t, err, "unknown reporter")
 	})
 
-	t.Run("duplicate name panics", func(t *testing.T) {
-		assert.Panics(t, func() { Register("logging", func(map[string]string) (Reporter, error) { return NopReporter{}, nil }) })
+	t.Run("duplicate name returns error without replacing factory", func(t *testing.T) {
+		err := Register(ReporterNameLogging, func(map[string]string) (Reporter, error) {
+			return NopReporter{}, nil
+		})
+		require.ErrorContains(t, err, "already registered")
+
+		r, err := FromProperties(map[string]string{ReporterImplKey: ReporterNameLogging})
+		require.NoError(t, err)
+		assert.IsType(t, &LoggingReporter{}, r)
+	})
+}
+
+func TestMustRegister(t *testing.T) {
+	t.Run("registers a valid factory", func(t *testing.T) {
+		MustRegister("test-must-register", func(map[string]string) (Reporter, error) {
+			return NopReporter{}, nil
+		})
+		t.Cleanup(func() { Deregister("test-must-register") })
+
+		r, err := FromProperties(map[string]string{ReporterImplKey: "test-must-register"})
+		require.NoError(t, err)
+		assert.IsType(t, NopReporter{}, r)
+	})
+
+	t.Run("panics on empty name", func(t *testing.T) {
+		assert.Panics(t, func() {
+			MustRegister("", func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
+		})
+	})
+
+	t.Run("panics on nil factory", func(t *testing.T) {
+		assert.Panics(t, func() { MustRegister("test-must-nil-factory", nil) })
+	})
+
+	t.Run("panics on duplicate name", func(t *testing.T) {
+		assert.Panics(t, func() {
+			MustRegister(ReporterNameLogging, func(map[string]string) (Reporter, error) {
+				return NopReporter{}, nil
+			})
+		})
 	})
 }
 
 func TestDeregisterProtectsBuiltins(t *testing.T) {
-	// Deregister must not remove the built-in factories: Register panics on a
-	// duplicate, so a removed built-in could never be restored, permanently
-	// breaking metrics-reporter-impl=nop/logging for the rest of the process.
+	// Deregister must not remove built-in factories: removing one would
+	// break metrics-reporter-impl=nop/logging for all later callers.
 	Deregister(ReporterNameNop)
 	Deregister(ReporterNameLogging)
 

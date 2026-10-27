@@ -42,6 +42,8 @@ Per-release notes (highlights, breaking changes, contributors) are published on 
 
 ### Unreleased compatibility notes
 
+- **Metrics reporter registration returns errors.** `metrics.Register(name, factory)` now returns an error for empty names, nil factories, and duplicate names instead of panicking. Handle the returned error for runtime registration; use `metrics.MustRegister` for intentional init-time panic behavior.
+
 - **View creation APIs take a named SQL representation.** `view.NewVersionFromSQL`, `view.CreateView`, `view.CreateViewWithIOProperties`, and `sql.Catalog.CreateView` now accept a `view.Representation{SQL: sql, Dialect: dialect}` instead of positional SQL/dialect strings. The dialect is required; Hive preserves the selected representation's dialect.
 
 - **View SQL representation construction uses named fields.** Replace `view.NewRepresentation(sql, dialect)` with `view.NewRepresentation(view.Representation{SQL: sql, Dialect: dialect})`. Serialized JSON is unchanged.

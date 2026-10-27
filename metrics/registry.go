@@ -50,28 +50,37 @@ var (
 )
 
 func init() {
-	Register(ReporterNameNop, func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
-	Register(ReporterNameLogging, func(map[string]string) (Reporter, error) {
+	MustRegister(ReporterNameNop, func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
+	MustRegister(ReporterNameLogging, func(map[string]string) (Reporter, error) {
 		return NewLoggingReporter(nil), nil
 	})
 }
 
-// Register makes a reporter factory available under name. It panics if name is
-// empty or already registered, mirroring database/sql.Register — registration
-// is expected to happen once, from package init.
-func Register(name string, factory Factory) {
+// Register makes a reporter factory available under name. It returns an error
+// for an empty name, nil factory, or duplicate registration.
+// Use MustRegister when registering a factory during package initialization.
+func Register(name string, factory Factory) error {
 	if name == "" {
-		panic("metrics: Register called with empty name")
+		return fmt.Errorf("metrics: register reporter: empty name")
 	}
 	if factory == nil {
-		panic("metrics: Register called with nil factory")
+		return fmt.Errorf("metrics: register reporter %q: nil factory", name)
 	}
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if _, dup := registry[name]; dup {
-		panic("metrics: Register called twice for " + name)
+		return fmt.Errorf("metrics: reporter %q already registered", name)
 	}
 	registry[name] = factory
+	return nil
+}
+
+// MustRegister registers a reporter factory or panics if registration fails.
+// It is intended for known-valid registrations in package init functions.
+func MustRegister(name string, factory Factory) {
+	if err := Register(name, factory); err != nil {
+		panic(err)
+	}
 }
 
 // Deregister removes a previously registered reporter factory. It is a no-op if
@@ -79,10 +88,9 @@ func Register(name string, factory Factory) {
 // and undo it via t.Cleanup, keeping the process-global registry re-runnable
 // under go test -count=N.
 //
-// The built-in "nop" and "logging" factories cannot be removed: since Register
-// panics on a duplicate name, nothing could put them back for the rest of the
-// process, and a stray Deregister("nop") would permanently break
-// metrics-reporter-impl=nop everywhere. Deregister silently ignores those names.
+// Built-in "nop" and "logging" factories cannot be removed. Removing them
+// would break reporter selection for all later catalog and table loads.
+// Deregister silently ignores those names.
 func Deregister(name string) {
 	if name == ReporterNameNop || name == ReporterNameLogging {
 		return

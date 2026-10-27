@@ -118,11 +118,15 @@ register a factory for it (typically from `init`):
 
 ```go
 func init() {
-    metrics.Register("my-reporter", func(props map[string]string) (metrics.Reporter, error) {
+    metrics.MustRegister("my-reporter", func(props map[string]string) (metrics.Reporter, error) {
         return myReporter{}, nil
     })
 }
 ```
+
+`MustRegister` is suitable for fixed registrations in `init` and panics on
+invalid or duplicate names. For runtime registration, use `metrics.Register`
+and handle its returned error instead.
 
 ## Reporting to a REST catalog
 
