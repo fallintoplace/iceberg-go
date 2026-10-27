@@ -113,13 +113,17 @@ func (r *Registry) Register(name string, factory Factory) error {
 	return nil
 }
 
-// Unregister removes a factory from this registry only. Built-in "nop" and
-// "logging" reporters are protected to keep their property values available.
-func (r *Registry) Unregister(name string) {
-	if name == ReporterNameNop || name == ReporterNameLogging {
-		return
+// MustRegister registers a factory or panics, for initialization code that
+// cannot recover from invalid registrations.
+func (r *Registry) MustRegister(name string, factory Factory) {
+	if err := r.Register(name, factory); err != nil {
+		panic(err)
 	}
+}
 
+// Unregister removes a factory from this registry only. Built-in names can be
+// removed or replaced in isolated registries without affecting the global one.
+func (r *Registry) Unregister(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.factories, name)
@@ -165,14 +169,15 @@ func Register(name string, factory Factory) error {
 
 // MustRegister registers a factory globally or panics, for use in package init.
 func MustRegister(name string, factory Factory) {
-	if err := Register(name, factory); err != nil {
-		panic(err)
-	}
+	defaultRegistry.MustRegister(name, factory)
 }
 
 // Deregister removes a global registration, ignoring unknown and built-in
 // names. For independent registrations, use [Registry.Unregister].
 func Deregister(name string) {
+	if name == ReporterNameNop || name == ReporterNameLogging {
+		return
+	}
 	defaultRegistry.Unregister(name)
 }
 

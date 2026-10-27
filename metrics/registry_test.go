@@ -151,23 +151,37 @@ func TestRegistryBuiltinsAndValidation(t *testing.T) {
 	registry := NewRegistry()
 	registry.Unregister(ReporterNameNop)
 	registry.Unregister(ReporterNameLogging)
-	assert.Equal(t, []string{"logging", "nop"}, registry.Names())
+	assert.Empty(t, registry.Names())
 
 	_, err := registry.FromProperties(map[string]string{ReporterImplKey: ReporterNameLogging})
-	require.NoError(t, err)
+	require.Error(t, err, "isolated registries may remove a built-in")
+	_, err = FromProperties(map[string]string{ReporterImplKey: ReporterNameLogging})
+	require.NoError(t, err, "the global built-in must remain available")
+
 	require.ErrorIs(t, registry.Register("", func(map[string]string) (Reporter, error) {
 		return NopReporter{}, nil
 	}), ErrInvalidReporterRegistration)
 	require.ErrorIs(t, registry.Register("new", nil), ErrInvalidReporterRegistration)
+
+	registry.MustRegister(ReporterNameNop, func(map[string]string) (Reporter, error) {
+		return NopReporter{}, nil
+	})
 	require.ErrorIs(t, registry.Register(ReporterNameNop, func(map[string]string) (Reporter, error) {
 		return NopReporter{}, nil
 	}), ErrReporterAlreadyRegistered)
+	assert.Panics(t, func() {
+		registry.MustRegister(ReporterNameNop, func(map[string]string) (Reporter, error) {
+			return NopReporter{}, nil
+		})
+	})
 
 	var empty Registry
-	require.NoError(t, empty.Register("custom", func(map[string]string) (Reporter, error) {
+	empty.MustRegister("custom", func(map[string]string) (Reporter, error) {
 		return NopReporter{}, nil
-	}))
+	})
 	assert.Equal(t, []string{"custom"}, empty.Names())
+	empty.Unregister("custom")
+	assert.Empty(t, empty.Names())
 }
 
 func TestRegistryRunsFactoriesWithoutHoldingLock(t *testing.T) {
