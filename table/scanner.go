@@ -1710,6 +1710,18 @@ func (scan *Scan) planFiles(ctx context.Context, projectScanColumns bool) ([]Fil
 	return results, nil
 }
 
+// validateRowFilter checks the filter when planning cannot construct the
+// usual manifest and data-file evaluators. Non-empty scans already bind the
+// filter during pruning, so they do not need a second binding pass.
+func (scan *Scan) validateRowFilter(schema *iceberg.Schema) error {
+	if scan.rowFilter == nil {
+		return nil
+	}
+
+	_, err := iceberg.BindExpr(schema, scan.rowFilter, scan.caseSensitive)
+	return err
+}
+
 // planFilesLocal performs local scan planning: it reads and filters the
 // snapshot's manifests using schema, builds the matching FileScanTasks, and
 // records planning metrics into acc for the caller to report. A successful
@@ -1729,8 +1741,11 @@ func (scan *Scan) planFilesLocal(
 	}()
 
 	snap, err := scan.ResolveSnapshot()
-	if err != nil || snap == nil {
+	if err != nil {
 		return nil, err
+	}
+	if snap == nil {
+		return nil, scan.validateRowFilter(schema)
 	}
 	// Keep the projection cache alive across both local planning phases. The
 	// manifest and data-file evaluators need the same per-spec projections.
@@ -1739,8 +1754,11 @@ func (scan *Scan) planFilesLocal(
 	// Step 1: Retrieve filtered manifests based on snapshot and partition specs.
 	manifestList, err := scan.fetchPartitionSpecFilteredManifestsWithSchema(
 		ctx, snap, schema, acc, partitionFilters)
-	if err != nil || len(manifestList) == 0 {
+	if err != nil {
 		return nil, err
+	}
+	if len(manifestList) == 0 {
+		return nil, scan.validateRowFilter(schema)
 	}
 	if scan.canLimitLocalPlanning(acc) {
 		// The manifest counters above describe partition pruning. Keep them
