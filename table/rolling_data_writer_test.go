@@ -695,8 +695,7 @@ func (s *RollingDataWriterTestSuite) TestPartitionLocProviderPreservesObjectStor
 	s.Require().NoError(err)
 	defer factory.closeAll()
 
-	provider, err := factory.partitionLocProvider("dt=2026-06-04")
-	s.Require().NoError(err)
+	provider := factory.partitionLocProvider("dt=2026-06-04")
 	_, ok := provider.(*objectStoreLocationProvider)
 	s.True(ok, "expected objectStoreLocationProvider for partitioned writes when write.object-storage.enabled=true")
 

@@ -172,10 +172,12 @@ func newObjectStoreLocationProvider(tableLoc string, tableProps iceberg.Properti
 	}
 }
 
-func LoadLocationProvider(tableLocation string, tableProps iceberg.Properties) (LocationProvider, error) {
+// NewLocationProvider creates a location provider from the table properties.
+// Choosing the provider does not perform IO and cannot fail.
+func NewLocationProvider(tableLocation string, tableProps iceberg.Properties) LocationProvider {
 	if tableProps.GetBool(ObjectStoreEnabledKey, ObjectStoreEnabledDefault) {
-		return newObjectStoreLocationProvider(tableLocation, tableProps), nil
+		return newObjectStoreLocationProvider(tableLocation, tableProps)
 	}
 
-	return newSimpleLocationProvider(tableLocation, tableProps), nil
+	return newSimpleLocationProvider(tableLocation, tableProps)
 }

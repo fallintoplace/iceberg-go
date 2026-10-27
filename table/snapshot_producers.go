@@ -898,10 +898,7 @@ func (sp *snapshotProducer) newManifestWriter(ctx context.Context, spec iceberg.
 }
 
 func (sp *snapshotProducer) newManifestOutput(ctx context.Context) (io.WriteCloser, string, error) {
-	provider, err := sp.txn.tbl.LocationProvider()
-	if err != nil {
-		return nil, "", err
-	}
+	provider := sp.txn.tbl.LocationProvider()
 	fname := newManifestFileName(int(sp.manifestCount.Add(1)), sp.commitUuid)
 	filepath := provider.NewMetadataLocation(fname)
 	f, err := sp.io.Create(ctx, filepath)
@@ -1584,10 +1581,7 @@ func (sp *snapshotProducer) commitManifests(ctx context.Context, newManifests, a
 	}
 
 	fname := newManifestListFileName(sp.snapshotID, 0, sp.commitUuid)
-	locProvider, err := sp.txn.tbl.LocationProvider()
-	if err != nil {
-		return nil, nil, err
-	}
+	locProvider := sp.txn.tbl.LocationProvider()
 
 	manifestListFilePath := locProvider.NewMetadataLocation(fname)
 

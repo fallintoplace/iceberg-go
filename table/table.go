@@ -169,8 +169,9 @@ func (t Table) Schemas() map[int]*iceberg.Schema {
 	return m
 }
 
-func (t Table) LocationProvider() (LocationProvider, error) {
-	return LoadLocationProvider(t.metadata.Location(), t.metadata.Properties())
+// LocationProvider creates a provider using the table's current metadata.
+func (t Table) LocationProvider() LocationProvider {
+	return NewLocationProvider(t.metadata.Location(), t.metadata.Properties())
 }
 
 func (t Table) NewTransaction() *Transaction {

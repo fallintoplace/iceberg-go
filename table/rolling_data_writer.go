@@ -140,12 +140,7 @@ func newWriterFactory(rootLocation string, args recordWritingArgs, meta *Metadat
 		return nil, err
 	}
 
-	locProvider, err := LoadLocationProvider(rootLocation, meta.props)
-	if err != nil {
-		stopCount()
-
-		return nil, err
-	}
+	locProvider := NewLocationProvider(rootLocation, meta.props)
 
 	fileSchema := meta.CurrentSchema()
 	sanitized, err := iceberg.SanitizeColumnNames(fileSchema)
@@ -294,10 +289,7 @@ func (w *writerFactory) openFileWriter(ctx context.Context, partitionPath string
 
 	var filePath string
 	if partitionPath != "" {
-		partitionLoc, err := w.partitionLocProvider(partitionPath)
-		if err != nil {
-			return nil, err
-		}
+		partitionLoc := w.partitionLocProvider(partitionPath)
 		filePath = partitionLoc.NewDataLocation(fileName)
 	} else {
 		filePath = w.locProvider.NewDataLocation(fileName)
@@ -319,23 +311,19 @@ func (w *writerFactory) openFileWriter(ctx context.Context, partitionPath string
 	}, arrowSchema)
 }
 
-func (w *writerFactory) partitionLocProvider(partitionPath string) (LocationProvider, error) {
+func (w *writerFactory) partitionLocProvider(partitionPath string) LocationProvider {
 	if cached, ok := w.partitionLocProviders.Load(partitionPath); ok {
-		return cached.(LocationProvider), nil
+		return cached.(LocationProvider)
 	}
 
 	partitionDataPath := w.rootURL.JoinPath("data", partitionPath).String()
 	partitionProps := make(iceberg.Properties, len(w.tableProps)+1)
 	maps.Copy(partitionProps, w.tableProps)
 	partitionProps[WriteDataPathKey] = partitionDataPath
-	loc, err := LoadLocationProvider(w.rootLocation, partitionProps)
-	if err != nil {
-		return nil, err
-	}
-
+	loc := NewLocationProvider(w.rootLocation, partitionProps)
 	w.partitionLocProviders.Store(partitionPath, loc)
 
-	return loc, nil
+	return loc
 }
 
 // RollingDataWriter writes Arrow records for a specific partition, rolling to

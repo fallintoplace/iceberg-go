@@ -109,10 +109,7 @@ func withEqualityFieldIDs(ids []int) dataFileWriterOption {
 }
 
 func newDataFileWriter(rootLocation string, fs io.WriteFileIO, meta *MetadataBuilder, props iceberg.Properties, opts ...dataFileWriterOption) (*defaultDataFileWriter, error) {
-	locProvider, err := LoadLocationProvider(rootLocation, props)
-	if err != nil {
-		return nil, err
-	}
+	locProvider := NewLocationProvider(rootLocation, props)
 
 	fileFormat, err := iceberg.FileFormatFromString(
 		props.Get(WriteFormatDefaultKey, WriteFormatDefaultDefault))

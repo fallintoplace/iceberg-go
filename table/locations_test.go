@@ -52,8 +52,7 @@ func TestLocationProviderLocalPaths(t *testing.T) {
 							props[table.WriteDataPathKey] = dataDir
 							props[table.WriteMetadataPathKey] = metadataDir
 						}
-						provider, err := table.LoadLocationProvider(root, props)
-						require.NoError(t, err)
+						provider := table.NewLocationProvider(root, props)
 						metadataFile, err := provider.NewTableMetadataFileLocation(1)
 						require.NoError(t, err)
 						for _, file := range []struct{ location, dir string }{
@@ -101,8 +100,7 @@ func TestLocationProviderLiteralPaths(t *testing.T) {
 		{`s3://bucket/literal\name`, `s3://bucket/literal\name/data/a`, `s3://bucket/literal\name/metadata/manifest.avro`},
 	} {
 		t.Run(tt.location, func(t *testing.T) {
-			provider, err := table.LoadLocationProvider(tt.location, nil)
-			require.NoError(t, err)
+			provider := table.NewLocationProvider(tt.location, nil)
 			assert.Equal(t, tt.data, provider.NewDataLocation("a"))
 			assert.Equal(t, tt.metadata, provider.NewMetadataLocation("manifest.avro"))
 		})
@@ -117,13 +115,12 @@ func TestLocationProviderLiteralCustomPaths(t *testing.T) {
 		{"true", "true", "s3://bucket/my data%20#?/0101/0110/1001/10110010/a"},
 	} {
 		t.Run(tt.objectStore+"/"+tt.partitionPaths, func(t *testing.T) {
-			provider, err := table.LoadLocationProvider("s3://bucket/my table", iceberg.Properties{
+			provider := table.NewLocationProvider("s3://bucket/my table", iceberg.Properties{
 				table.ObjectStoreEnabledKey:               tt.objectStore,
 				table.WriteObjectStorePartitionedPathsKey: tt.partitionPaths,
 				table.WriteDataPathKey:                    "s3://bucket/my data%20#?///",
 				table.WriteMetadataPathKey:                "gs://bucket/100% metadata/./../here/",
 			})
-			require.NoError(t, err)
 			assert.Equal(t, tt.data, provider.NewDataLocation("a"))
 			assert.Equal(t, "s3://bucket/my data%20#?/partition=a b%20#?/file.parquet",
 				provider.NewDataLocation("partition=a b%20#?/file.parquet"))
@@ -134,23 +131,20 @@ func TestLocationProviderLiteralCustomPaths(t *testing.T) {
 }
 
 func TestLocationProviderMetadataDefaultLocation(t *testing.T) {
-	provider, err := table.LoadLocationProvider("table_location", nil)
-	require.NoError(t, err)
+	provider := table.NewLocationProvider("table_location", nil)
 	assert.Equal(t, "table_location/metadata/manifest.avro", provider.NewMetadataLocation("manifest.avro"))
 }
 
 func TestLocationProviderMetadataLocationCustomPath(t *testing.T) {
-	provider, err := table.LoadLocationProvider("table_location",
+	provider := table.NewLocationProvider("table_location",
 		iceberg.Properties{table.WriteMetadataPathKey: "s3://table-location/custom/path"})
-	require.NoError(t, err)
 
 	assert.Equal(t, "s3://table-location/custom/path/metadata.json", provider.NewMetadataLocation("metadata.json"))
 }
 
 func TestLocationProviderMetadataLocationTrailingSlash(t *testing.T) {
-	provider, err := table.LoadLocationProvider("table_location",
+	provider := table.NewLocationProvider("table_location",
 		iceberg.Properties{table.WriteMetadataPathKey: "s3://table-location/custom/path/"})
-	require.NoError(t, err)
 
 	assert.Equal(t, "s3://table-location/custom/path/metadata.json", provider.NewMetadataLocation("metadata.json"))
 }
@@ -159,8 +153,7 @@ func TestLocationProviderMetadataFileLocation(t *testing.T) {
 	uuid.SetRand(strings.NewReader("0123456789abcdefghijkl"))
 	defer uuid.SetRand(nil)
 
-	provider, err := table.LoadLocationProvider("table_location", nil)
-	require.NoError(t, err)
+	provider := table.NewLocationProvider("table_location", nil)
 
 	loc, err := provider.NewTableMetadataFileLocation(1)
 	require.NoError(t, err)
@@ -171,9 +164,8 @@ func TestLocationProviderMetadataFileLocationCustomPath(t *testing.T) {
 	uuid.SetRand(strings.NewReader("0123456789abcdefghijkl"))
 	defer uuid.SetRand(nil)
 
-	provider, err := table.LoadLocationProvider("table_location",
+	provider := table.NewLocationProvider("table_location",
 		iceberg.Properties{table.WriteMetadataPathKey: "s3://table-location/custom/path/"})
-	require.NoError(t, err)
 
 	loc, err := provider.NewTableMetadataFileLocation(1)
 	require.NoError(t, err)
@@ -181,9 +173,8 @@ func TestLocationProviderMetadataFileLocationCustomPath(t *testing.T) {
 }
 
 func TestObjectStoreLocationProvider(t *testing.T) {
-	provider, err := table.LoadLocationProvider("table_location",
+	provider := table.NewLocationProvider("table_location",
 		iceberg.Properties{table.ObjectStoreEnabledKey: "true"})
-	require.NoError(t, err)
 
 	assert.Equal(t, "table_location/data/0101/0110/1001/10110010/a", provider.NewDataLocation("a"))
 	assert.Equal(t, "table_location/data/1110/0111/1110/00000011/b", provider.NewDataLocation("b"))
@@ -197,9 +188,8 @@ func TestObjectStoreLocationProvider(t *testing.T) {
 // the final "/" is still replaced with "-" even for un-partitioned files. This matches the behavior of
 // the Java implementation.
 func TestObjectStoreLocationProviderPartitionedPathsDisabled(t *testing.T) {
-	provider, err := table.LoadLocationProvider("table_location",
+	provider := table.NewLocationProvider("table_location",
 		iceberg.Properties{table.ObjectStoreEnabledKey: "true", table.WriteObjectStorePartitionedPathsKey: "false"})
-	require.NoError(t, err)
 
 	assert.Equal(t, "table_location/data/0101/0110/1001/10110010-a", provider.NewDataLocation("a"))
 	assert.Equal(t, "table_location/data/1110/0111/1110/00000011-b", provider.NewDataLocation("b"))

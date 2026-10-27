@@ -146,10 +146,7 @@ func createStagedTable(
 		return table.StagedTable{}, err
 	}
 
-	provider, err := table.LoadLocationProvider(loc, cfg.Properties)
-	if err != nil {
-		return table.StagedTable{}, err
-	}
+	provider := table.NewLocationProvider(loc, cfg.Properties)
 
 	metadataLoc, err := provider.NewTableMetadataFileLocation(0)
 	if err != nil {
@@ -316,10 +313,7 @@ func UpdateAndStageTable(ctx context.Context, catprops iceberg.Properties, curre
 		return nil, err
 	}
 
-	provider, err := table.LoadLocationProvider(updated.Location(), updated.Properties())
-	if err != nil {
-		return nil, err
-	}
+	provider := table.NewLocationProvider(updated.Location(), updated.Properties())
 
 	newLocation, err := provider.NewTableMetadataFileLocation(newVersion)
 	if err != nil {
