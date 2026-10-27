@@ -96,6 +96,12 @@ type compatibilityChecker struct {
 	// PreOrderVisit sends list elements and map keys/values through Field,
 	// but only struct fields should be looked up by ID.
 	inContainer bool
+	fieldsByID  map[int]compatibilityField
+}
+
+type compatibilityField struct {
+	field   NestedField
+	ordinal int
 }
 
 func (c *compatibilityChecker) Schema(_ *Schema, structErrors func() []string) []string {
@@ -112,27 +118,37 @@ func (c *compatibilityChecker) Struct(readStruct StructType, fieldErrors []func(
 		return []string{fmt.Sprintf(": %s cannot be read as a struct", c.current)}
 	}
 
+	previousFields := c.fieldsByID
+	c.fieldsByID = make(map[int]compatibilityField, len(st.FieldList))
+	defer func() { c.fieldsByID = previousFields }()
+
+	for i, f := range st.FieldList {
+		entry, exists := c.fieldsByID[f.ID]
+		if !exists {
+			entry.field = f
+		}
+		// Preserve the original first-match field lookup and last-match
+		// ordering even when a malformed schema contains duplicate IDs.
+		entry.ordinal = i
+		c.fieldsByID[f.ID] = entry
+	}
+
 	var errs []string
 	for _, fieldErrs := range fieldErrors {
 		errs = append(errs, fieldErrs()...)
 	}
 
 	if c.checkOrdering {
-		ordinals := make(map[int]int, len(st.FieldList))
-		for i, f := range st.FieldList {
-			ordinals[f.ID] = i
-		}
-
 		lastOrdinal, lastName := -1, ""
 		for _, readField := range readStruct.FieldList {
-			ordinal, ok := ordinals[readField.ID]
+			entry, ok := c.fieldsByID[readField.ID]
 			if !ok {
 				continue
 			}
-			if lastOrdinal >= ordinal {
+			if lastOrdinal >= entry.ordinal {
 				errs = append(errs, fmt.Sprintf("%s is out of order, before %s", readField.Name, lastName))
 			}
-			lastOrdinal, lastName = ordinal, readField.Name
+			lastOrdinal, lastName = entry.ordinal, readField.Name
 		}
 	}
 
@@ -151,17 +167,7 @@ func (c *compatibilityChecker) Field(readField NestedField, fieldErrors func() [
 		return nil // Struct() already reported the mismatch
 	}
 
-	var (
-		writeField NestedField
-		found      bool
-	)
-	for _, f := range st.FieldList {
-		if f.ID == readField.ID {
-			writeField, found = f, true
-
-			break
-		}
-	}
+	writeField, found := c.fieldsByID[readField.ID]
 
 	if !found {
 		if readField.Required {
@@ -172,11 +178,11 @@ func (c *compatibilityChecker) Field(readField NestedField, fieldErrors func() [
 		return nil
 	}
 
-	c.current = writeField.Type
+	c.current = writeField.field.Type
 	defer func() { c.current = st }()
 
 	var errs []string
-	if c.checkNullability && readField.Required && !writeField.Required {
+	if c.checkNullability && readField.Required && !writeField.field.Required {
 		errs = append(errs, readField.Name+" should be required, but is optional")
 	}
 
