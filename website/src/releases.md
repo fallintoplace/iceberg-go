@@ -76,6 +76,8 @@ Per-release notes (highlights, breaking changes, contributors) are published on 
 
 - **Partition and sort source accessors renamed.** Replace `PartitionField.SourceID()` and `SortField.SourceID()` with `FirstSourceID()`. Their behavior and serialized fields are unchanged.
 
+- **Row-lineage column predicate renamed.** Use `iceberg.IsRowLineageColumn` instead of `iceberg.IsMetadataColumn` to identify `_row_id` and `_last_updated_sequence_number`. Use `iceberg.IsReservedFieldID` to check the full reserved metadata field ID range.
+
 ## Verifying and producing releases
 
 If you are validating an RC or cutting a new release, see:
