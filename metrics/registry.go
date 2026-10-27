@@ -18,7 +18,10 @@
 package metrics
 
 import (
+	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 )
 
@@ -34,6 +37,15 @@ const (
 	ReporterNameLogging = "logging"
 )
 
+var (
+	// ErrReporterAlreadyRegistered indicates that a registry contains a factory
+	// with the requested name.
+	ErrReporterAlreadyRegistered = errors.New("metrics: reporter already registered")
+
+	// ErrInvalidReporterRegistration indicates an empty name or nil factory.
+	ErrInvalidReporterRegistration = errors.New("metrics: invalid reporter registration")
+)
+
 // Factory builds a Reporter from configuration properties. The same property
 // map that selected the reporter is passed in, so a factory may read its own
 // configuration keys.
@@ -44,74 +56,128 @@ const (
 // caller reasonably assumed a nil interface meant "no reporter".
 type Factory func(props map[string]string) (Reporter, error)
 
-var (
-	registryMu sync.RWMutex
-	registry   = map[string]Factory{}
-)
-
-func init() {
-	Register(ReporterNameNop, func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
-	Register(ReporterNameLogging, func(map[string]string) (Reporter, error) {
-		return NewLoggingReporter(nil), nil
-	})
+// Registry manages reporter factories independently of other registries.
+// It is safe for concurrent use. Factories run without holding its lock,
+// so they may register other reporters or construct nested reporters.
+type Registry struct {
+	mu        sync.RWMutex
+	factories map[string]Factory
 }
 
-// Register makes a reporter factory available under name. It panics if name is
-// empty or already registered, mirroring database/sql.Register — registration
-// is expected to happen once, from package init.
-func Register(name string, factory Factory) {
+var defaultRegistry = &Registry{factories: map[string]Factory{
+	ReporterNameNop: func(map[string]string) (Reporter, error) {
+		return NopReporter{}, nil
+	},
+	ReporterNameLogging: func(map[string]string) (Reporter, error) {
+		return NewLoggingReporter(nil), nil
+	},
+}}
+
+// NewRegistry snapshots globally registered reporter factories, including
+// built-ins. Future changes to either registry do not affect the other.
+// The zero value of Registry is also usable, but has no registered factories.
+func NewRegistry() *Registry {
+	return defaultRegistry.Clone()
+}
+
+// Clone returns an independent snapshot of this registry. Factories are
+// shared, while registrations and synchronization are independent.
+func (r *Registry) Clone() *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return &Registry{factories: maps.Clone(r.factories)}
+}
+
+// Register registers a reporter factory by name. Invalid or duplicate
+// registrations return errors, rather than panicking.
+func (r *Registry) Register(name string, factory Factory) error {
 	if name == "" {
-		panic("metrics: Register called with empty name")
+		return fmt.Errorf("%w: empty name", ErrInvalidReporterRegistration)
 	}
 	if factory == nil {
-		panic("metrics: Register called with nil factory")
+		return fmt.Errorf("%w: nil factory for %q", ErrInvalidReporterRegistration, name)
 	}
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	if _, dup := registry[name]; dup {
-		panic("metrics: Register called twice for " + name)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.factories[name]; exists {
+		return fmt.Errorf("%w: %q", ErrReporterAlreadyRegistered, name)
 	}
-	registry[name] = factory
+	if r.factories == nil {
+		r.factories = make(map[string]Factory)
+	}
+	r.factories[name] = factory
+
+	return nil
 }
 
-// Deregister removes a previously registered reporter factory. It is a no-op if
-// name is not registered. This exists primarily so tests can register a factory
-// and undo it via t.Cleanup, keeping the process-global registry re-runnable
-// under go test -count=N.
-//
-// The built-in "nop" and "logging" factories cannot be removed: since Register
-// panics on a duplicate name, nothing could put them back for the rest of the
-// process, and a stray Deregister("nop") would permanently break
-// metrics-reporter-impl=nop everywhere. Deregister silently ignores those names.
-func Deregister(name string) {
+// Unregister removes a factory from this registry only. Built-in "nop" and
+// "logging" reporters are protected to keep their property values available.
+func (r *Registry) Unregister(name string) {
 	if name == ReporterNameNop || name == ReporterNameLogging {
 		return
 	}
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	delete(registry, name)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.factories, name)
 }
 
-// FromProperties builds the reporter named by props[ReporterImplKey]. An absent
-// or empty name yields [NopReporter] (reporting is opt-in), and an unrecognized name is
-// an error so misconfiguration surfaces rather than silently disabling metrics.
+// Names returns the registered reporter names in sorted order.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return slices.Sorted(maps.Keys(r.factories))
+}
+
+// FromProperties builds the reporter named by props[ReporterImplKey]. An
+// absent or empty name yields [NopReporter] (reporting is opt-in), and an
+// unrecognized name is an error. Factory callbacks run outside the registry
+// lock.
 //
-// This nop default is an intentional divergence from Java, where an absent
-// metrics-reporter-impl defaults to LoggingMetricsReporter. Callers migrating
-// from Java that want scan/commit reports by default must set ReporterImplKey to
-// [ReporterNameLogging] explicitly.
-func FromProperties(props map[string]string) (Reporter, error) {
+// This nop default intentionally differs from Java, where an absent reporter
+// property selects LoggingMetricsReporter. Set ReporterImplKey to
+// [ReporterNameLogging] explicitly to opt into logging.
+func (r *Registry) FromProperties(props map[string]string) (Reporter, error) {
 	name := props[ReporterImplKey]
 	if name == "" {
 		return NopReporter{}, nil
 	}
 
-	registryMu.RLock()
-	factory, ok := registry[name]
-	registryMu.RUnlock()
+	r.mu.RLock()
+	factory, ok := r.factories[name]
+	r.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("metrics: unknown reporter %q (set via %q)", name, ReporterImplKey)
 	}
 
 	return factory(props)
+}
+
+// Register registers a factory in the global registry. It returns an error
+// for invalid or duplicate registrations. For package init, use MustRegister.
+func Register(name string, factory Factory) error {
+	return defaultRegistry.Register(name, factory)
+}
+
+// MustRegister registers a factory globally or panics, for use in package init.
+func MustRegister(name string, factory Factory) {
+	if err := Register(name, factory); err != nil {
+		panic(err)
+	}
+}
+
+// Deregister removes a global registration, ignoring unknown and built-in
+// names. For independent registrations, use [Registry.Unregister].
+func Deregister(name string) {
+	defaultRegistry.Unregister(name)
+}
+
+// FromProperties builds a reporter from the global factory registry. Use
+// [Registry.FromProperties] to resolve names against an isolated registry.
+func FromProperties(props map[string]string) (Reporter, error) {
+	return defaultRegistry.FromProperties(props)
 }

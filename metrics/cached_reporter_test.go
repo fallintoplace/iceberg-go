@@ -27,7 +27,7 @@ import (
 func TestCachedReporter(t *testing.T) {
 	t.Run("builds once and caches", func(t *testing.T) {
 		var builds int
-		Register("cached-once", func(map[string]string) (Reporter, error) {
+		MustRegister("cached-once", func(map[string]string) (Reporter, error) {
 			builds++
 
 			return &countingReporter{}, nil
@@ -46,7 +46,7 @@ func TestCachedReporter(t *testing.T) {
 
 	t.Run("Close releases the built reporter", func(t *testing.T) {
 		cr := &countingReporter{}
-		Register("cached-close", func(map[string]string) (Reporter, error) { return cr, nil })
+		MustRegister("cached-close", func(map[string]string) (Reporter, error) { return cr, nil })
 		t.Cleanup(func() { Deregister("cached-close") })
 
 		var c CachedReporter
@@ -63,7 +63,7 @@ func TestCachedReporter(t *testing.T) {
 
 	t.Run("Close is idempotent and does not re-close", func(t *testing.T) {
 		cr := &countingReporter{}
-		Register("cached-idempotent", func(map[string]string) (Reporter, error) { return cr, nil })
+		MustRegister("cached-idempotent", func(map[string]string) (Reporter, error) { return cr, nil })
 		t.Cleanup(func() { Deregister("cached-idempotent") })
 
 		var c CachedReporter
@@ -76,7 +76,7 @@ func TestCachedReporter(t *testing.T) {
 
 	t.Run("Get after Close returns the nop reporter", func(t *testing.T) {
 		cr := &countingReporter{}
-		Register("cached-post-close", func(map[string]string) (Reporter, error) { return cr, nil })
+		MustRegister("cached-post-close", func(map[string]string) (Reporter, error) { return cr, nil })
 		t.Cleanup(func() { Deregister("cached-post-close") })
 
 		var c CachedReporter
@@ -98,4 +98,31 @@ func TestCachedReporter(t *testing.T) {
 		_, err2 := c.Get(props)
 		assert.Equal(t, err1, err2, "the cached error must be returned without rebuilding")
 	})
+}
+
+func TestCachedReporterWithIsolatedRegistry(t *testing.T) {
+	registry := NewRegistry()
+	var builds int
+	require.NoError(t, registry.Register("cached-isolated", func(map[string]string) (Reporter, error) {
+		builds++
+		return &countingReporter{}, nil
+	}))
+
+	props := map[string]string{ReporterImplKey: "cached-isolated"}
+	_, err := FromProperties(props)
+	require.Error(t, err, "the global registry must not see an isolated factory")
+
+	cache := NewCachedReporter(registry)
+	first, err := cache.Get(props)
+	require.NoError(t, err)
+	second, err := cache.Get(props)
+	require.NoError(t, err)
+	assert.Same(t, first, second)
+	assert.Equal(t, 1, builds)
+	require.NoError(t, cache.Close())
+
+	globalCache := NewCachedReporter(nil)
+	reporter, err := globalCache.Get(map[string]string{ReporterImplKey: ReporterNameNop})
+	require.NoError(t, err)
+	assert.IsType(t, NopReporter{}, reporter)
 }

@@ -416,7 +416,7 @@ func TestHiveCloseIsolatesClientPanicFromReporter(t *testing.T) {
 	assert := require.New(t)
 
 	var reporterClosed bool
-	metrics.Register("hive-close-panic", func(map[string]string) (metrics.Reporter, error) {
+	metrics.MustRegister("hive-close-panic", func(map[string]string) (metrics.Reporter, error) {
 		return recordingReporter{closed: &reporterClosed}, nil
 	})
 	t.Cleanup(func() { metrics.Deregister("hive-close-panic") })

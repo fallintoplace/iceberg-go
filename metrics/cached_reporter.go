@@ -29,15 +29,23 @@ import "sync"
 // The zero value is ready to use and safe for concurrent use. Close releases
 // the built reporter, giving a catalog a single place to clean up at shutdown.
 type CachedReporter struct {
-	mu     sync.Mutex
-	built  bool
-	closed bool
-	rep    Reporter
-	err    error
+	mu       sync.Mutex
+	registry *Registry
+	built    bool
+	closed   bool
+	rep      Reporter
+	err      error
+}
+
+// NewCachedReporter creates a cache using registry for reporter lookups.
+// If registry is nil, the process-global registry is used. The zero value
+// of CachedReporter also uses the global registry.
+func NewCachedReporter(registry *Registry) *CachedReporter {
+	return &CachedReporter{registry: registry}
 }
 
 // Get returns the cached reporter, building it from props on the first call via
-// [FromProperties]. The first call's result — reporter and error — is cached and
+// [Registry.FromProperties]. The first call's result — reporter and error — is cached and
 // returned to every later caller; props supplied on subsequent calls is ignored,
 // because a catalog's reporter configuration does not change over its lifetime.
 //
@@ -51,7 +59,11 @@ func (c *CachedReporter) Get(props map[string]string) (Reporter, error) {
 		return NopReporter{}, nil
 	}
 	if !c.built {
-		c.rep, c.err = FromProperties(props)
+		registry := c.registry
+		if registry == nil {
+			registry = defaultRegistry
+		}
+		c.rep, c.err = registry.FromProperties(props)
 		c.built = true
 	}
 

@@ -118,11 +118,22 @@ register a factory for it (typically from `init`):
 
 ```go
 func init() {
-    metrics.Register("my-reporter", func(props map[string]string) (metrics.Reporter, error) {
+    metrics.MustRegister("my-reporter", func(props map[string]string) (metrics.Reporter, error) {
         return myReporter{}, nil
     })
 }
 ```
+
+For runtime registrations, `metrics.Register(name, factory)` returns an error
+for empty names, nil factories, or duplicates. Use `metrics.MustRegister` in
+`init` when such errors should be fatal.
+
+To avoid sharing registrations between applications or tests, create an isolated
+snapshot with `registry := metrics.NewRegistry()`, call
+`registry.Register(name, factory)`, and resolve with
+`registry.FromProperties(props)`. A `metrics.NewCachedReporter(registry)`
+uses that registry for its first reporter lookup. The default cached reporter
+and built-in catalogs continue to use the global registry.
 
 ## Reporting to a REST catalog
 

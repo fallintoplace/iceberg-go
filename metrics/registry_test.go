@@ -57,25 +57,34 @@ func TestFromProperties(t *testing.T) {
 
 func TestRegister(t *testing.T) {
 	t.Run("factory is selectable via FromProperties", func(t *testing.T) {
-		Register("test-custom", func(props map[string]string) (Reporter, error) {
+		require.NoError(t, Register("test-custom", func(props map[string]string) (Reporter, error) {
 			return &InMemoryReporter{}, nil
-		})
+		}))
 		t.Cleanup(func() { Deregister("test-custom") })
 		r, err := FromProperties(map[string]string{ReporterImplKey: "test-custom"})
 		require.NoError(t, err)
 		assert.IsType(t, &InMemoryReporter{}, r)
 	})
 
-	t.Run("empty name panics", func(t *testing.T) {
-		assert.Panics(t, func() { Register("", func(map[string]string) (Reporter, error) { return NopReporter{}, nil }) })
+	t.Run("empty name returns an error", func(t *testing.T) {
+		err := Register("", func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
+		require.ErrorIs(t, err, ErrInvalidReporterRegistration)
 	})
 
-	t.Run("nil factory panics", func(t *testing.T) {
-		assert.Panics(t, func() { Register("test-nil-factory", nil) })
+	t.Run("nil factory returns an error", func(t *testing.T) {
+		err := Register("test-nil-factory", nil)
+		require.ErrorIs(t, err, ErrInvalidReporterRegistration)
 	})
 
-	t.Run("duplicate name panics", func(t *testing.T) {
-		assert.Panics(t, func() { Register("logging", func(map[string]string) (Reporter, error) { return NopReporter{}, nil }) })
+	t.Run("duplicate name returns an error", func(t *testing.T) {
+		err := Register("logging", func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
+		require.ErrorIs(t, err, ErrReporterAlreadyRegistered)
+	})
+
+	t.Run("MustRegister panics for invalid registrations", func(t *testing.T) {
+		assert.Panics(t, func() {
+			MustRegister("logging", func(map[string]string) (Reporter, error) { return NopReporter{}, nil })
+		})
 	})
 }
 
@@ -93,4 +102,85 @@ func TestDeregisterProtectsBuiltins(t *testing.T) {
 	logging, err := FromProperties(map[string]string{ReporterImplKey: ReporterNameLogging})
 	require.NoError(t, err)
 	assert.IsType(t, &LoggingReporter{}, logging)
+}
+
+func TestRegistryIsolation(t *testing.T) {
+	first := NewRegistry()
+	second := NewRegistry()
+	factory := func(map[string]string) (Reporter, error) { return &InMemoryReporter{}, nil }
+	require.NoError(t, first.Register("test-scoped", factory))
+
+	props := map[string]string{ReporterImplKey: "test-scoped"}
+	got, err := first.FromProperties(props)
+	require.NoError(t, err)
+	assert.IsType(t, &InMemoryReporter{}, got)
+
+	_, err = second.FromProperties(props)
+	require.Error(t, err)
+	_, err = FromProperties(props)
+	require.Error(t, err)
+
+	clone := first.Clone()
+	require.NoError(t, clone.Register("test-cloned", factory))
+	assert.Equal(t, []string{"logging", "nop", "test-cloned", "test-scoped"}, clone.Names())
+	assert.Equal(t, []string{"logging", "nop", "test-scoped"}, first.Names())
+
+	first.Unregister("test-scoped")
+	_, err = first.FromProperties(props)
+	require.Error(t, err)
+	_, err = clone.FromProperties(props)
+	require.NoError(t, err)
+}
+
+func TestRegistrySnapshotsGlobalRegistrations(t *testing.T) {
+	before := NewRegistry()
+	factory := func(map[string]string) (Reporter, error) { return NopReporter{}, nil }
+	require.NoError(t, Register("test-late-registration", factory))
+	t.Cleanup(func() { Deregister("test-late-registration") })
+
+	props := map[string]string{ReporterImplKey: "test-late-registration"}
+	_, err := before.FromProperties(props)
+	require.Error(t, err)
+	_, err = NewRegistry().FromProperties(props)
+	require.NoError(t, err)
+	_, err = FromProperties(props)
+	require.NoError(t, err)
+}
+
+func TestRegistryBuiltinsAndValidation(t *testing.T) {
+	registry := NewRegistry()
+	registry.Unregister(ReporterNameNop)
+	registry.Unregister(ReporterNameLogging)
+	assert.Equal(t, []string{"logging", "nop"}, registry.Names())
+
+	_, err := registry.FromProperties(map[string]string{ReporterImplKey: ReporterNameLogging})
+	require.NoError(t, err)
+	require.ErrorIs(t, registry.Register("", func(map[string]string) (Reporter, error) {
+		return NopReporter{}, nil
+	}), ErrInvalidReporterRegistration)
+	require.ErrorIs(t, registry.Register("new", nil), ErrInvalidReporterRegistration)
+	require.ErrorIs(t, registry.Register(ReporterNameNop, func(map[string]string) (Reporter, error) {
+		return NopReporter{}, nil
+	}), ErrReporterAlreadyRegistered)
+
+	var empty Registry
+	require.NoError(t, empty.Register("custom", func(map[string]string) (Reporter, error) {
+		return NopReporter{}, nil
+	}))
+	assert.Equal(t, []string{"custom"}, empty.Names())
+}
+
+func TestRegistryRunsFactoriesWithoutHoldingLock(t *testing.T) {
+	registry := NewRegistry()
+	require.NoError(t, registry.Register("outer", func(map[string]string) (Reporter, error) {
+		err := registry.Register("inner", func(map[string]string) (Reporter, error) {
+			return NopReporter{}, nil
+		})
+		return NopReporter{}, err
+	}))
+
+	_, err := registry.FromProperties(map[string]string{ReporterImplKey: "outer"})
+	require.NoError(t, err)
+	_, err = registry.FromProperties(map[string]string{ReporterImplKey: "inner"})
+	require.NoError(t, err)
 }
