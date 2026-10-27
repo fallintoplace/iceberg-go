@@ -57,6 +57,44 @@ func newDeleteManifest(minSeqNum int64) iceberg.ManifestFile {
 		Build()
 }
 
+func TestPlanFilesValidatesFiltersOnEmptyPlanningPaths(t *testing.T) {
+	for _, tt := range []struct {
+		name            string
+		withoutSnapshot bool
+	}{
+		{name: "no snapshot", withoutSnapshot: true},
+		{name: "snapshot with no manifests"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			scan, _ := scanWithManifestCount(t, 0)
+			if tt.withoutSnapshot {
+				schema := iceberg.NewSchema(1, iceberg.NestedField{
+					ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int64, Required: true,
+				})
+				meta, err := NewMetadata(
+					schema, iceberg.UnpartitionedSpec, UnsortedSortOrder, "mem://planning/table", nil)
+				require.NoError(t, err)
+				scan.metadata = meta
+			}
+
+			scan.rowFilter = iceberg.EqualTo(iceberg.Reference("missing_column"), int64(42))
+			tasks, err := scan.PlanFiles(t.Context())
+			require.Error(t, err)
+			require.Nil(t, tasks)
+
+			scan.rowFilter = iceberg.EqualTo(iceberg.Reference("id"), int64(42))
+			tasks, err = scan.PlanFiles(t.Context())
+			require.NoError(t, err)
+			require.Empty(t, tasks)
+
+			scan.rowFilter = nil
+			tasks, err = scan.PlanFiles(t.Context())
+			require.NoError(t, err)
+			require.Empty(t, tasks)
+		})
+	}
+}
+
 func TestPlanFilesReusesFileIOWithinManifestBatches(t *testing.T) {
 	const manifestCount = 17
 
