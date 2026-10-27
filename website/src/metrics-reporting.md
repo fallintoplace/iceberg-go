@@ -124,6 +124,30 @@ func init() {
 }
 ```
 
+### Isolated reporter registrations
+
+Use `metrics.NewRegistry` when different applications or tests need
+independent factory names. A new registry copies the currently registered
+global factories, including `nop` and `logging`; subsequent changes do not affect
+other registries.
+
+```go
+registry := metrics.NewRegistry()
+registry.Register("my-reporter", func(map[string]string) (metrics.Reporter, error) {
+    return myReporter{}, nil
+})
+
+reporter, err := registry.FromProperties(map[string]string{
+    metrics.ReporterImplKey: "my-reporter",
+})
+// handle err; close reporter when no longer needed
+scan := tbl.Scan(table.WithReporter(reporter))
+```
+
+Catalog property resolution still uses the global registrations from
+`metrics.Register`. To use an isolated registry, resolve the reporter
+explicitly and pass it to `table.WithReporter` or `table.WithMetricsReporter`.
+
 ## Reporting to a REST catalog
 
 A REST catalog can also POST each report to the catalog's
