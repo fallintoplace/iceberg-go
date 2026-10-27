@@ -298,16 +298,24 @@ func TestReplaceFilesDataOnlyStillReplays(t *testing.T) {
 		"the replay must inherit the peer's append alongside the compacted file")
 }
 
-// A copy-on-write delete that removes a deletion vector must fail on a concurrent append instead of retrying.
-// Without a deletion vector, the same delete still retries and both writes land.
-func TestCoWDeleteRemovingDVFailsInsteadOfReplaying(t *testing.T) {
+// A COW delete may replay after an unrelated append even if it removes a DV.
+// The removed data file is validated against concurrent deletes on retry.
+func TestCoWDeleteRemovingDVReplaysUnrelatedAppend(t *testing.T) {
 	cases := []struct {
-		name         string
-		seededDVs    int
-		wantAttempts int32
+		name      string
+		seededDVs int
+		wantIDs   []int64
 	}{
-		{name: "file with a deletion vector fails on the first conflict", seededDVs: 1, wantAttempts: 1},
-		{name: "file without a deletion vector still retries", seededDVs: 0, wantAttempts: 2},
+		{
+			name: "file with a deletion vector",
+			seededDVs: 1,
+			wantIDs: []int64{1, 3, 4, 5, 6, 8, 9, 10, 100},
+		},
+		{
+			name: "file without a deletion vector",
+			seededDVs: 0,
+			wantIDs: []int64{1, 3, 4, 5, 6, 7, 8, 9, 10, 100},
+		},
 	}
 
 	for _, tc := range cases {
@@ -331,21 +339,46 @@ func TestCoWDeleteRemovingDVFailsInsteadOfReplaying(t *testing.T) {
 			appendRowsOnRef(t, tbl, table.MainBranch, 100)
 
 			attemptsBefore := cat.attempts.Load()
-			_, err = staleTxn.Commit(ctx)
-			assert.Equal(t, attemptsBefore+tc.wantAttempts, cat.attempts.Load())
-
-			committed, loadErr := cat.LoadTable(ctx, table.Identifier{"db", "no_replay_removals"})
-			require.NoError(t, loadErr)
-			if tc.seededDVs > 0 {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, table.ErrCommitFailed)
-				assert.Equal(t, []int64{1, 2, 3, 4, 5, 6, 8, 9, 10, 100}, idsInTable(t, committed),
-					"only the peer's append landed; the stale delete of id 2 must not have")
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, []int64{1, 3, 4, 5, 6, 7, 8, 9, 10, 100}, idsInTable(t, committed),
-					"the delete replays over the peer's append, so both writers land")
-			}
+			committed, err := staleTxn.Commit(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, attemptsBefore+2, cat.attempts.Load(),
+				"expected one failed CAS followed by a successful replay")
+			assert.Equal(t, tc.wantIDs, idsInTable(t, committed))
+			assert.Zero(t, liveDVCount(t, committed),
+				"the removed data file must not leave a live deletion vector")
 		})
 	}
+}
+
+// A concurrent replacement DV still blocks the COW rewrite: replaying the
+// stale output would otherwise resurrect the rows deleted by the peer.
+func TestCoWDeleteRemovingDVRejectsConcurrentDelete(t *testing.T) {
+	ctx := t.Context()
+	tbl, cat := newNoReplayV3Table(t)
+	tbl = appendTenRows(t, tbl)
+	tbl = mergeOnReadDelete(t, tbl, 7)
+
+	setCOW := tbl.NewTransaction()
+	require.NoError(t, setCOW.SetProperties(iceberg.Properties{table.WriteDeleteModeKey: table.WriteModeCopyOnWrite}))
+	var err error
+	tbl, err = setCOW.Commit(ctx)
+	require.NoError(t, err)
+
+	staleTxn := tbl.NewTransaction()
+	require.NoError(t, staleTxn.Delete(ctx, iceberg.EqualTo(iceberg.Reference("id"), int64(2)), nil))
+
+	peerTxn := tbl.NewTransaction()
+	require.NoError(t, peerTxn.SetProperties(iceberg.Properties{table.WriteDeleteModeKey: table.WriteModeMergeOnRead}))
+	require.NoError(t, peerTxn.Delete(ctx, iceberg.EqualTo(iceberg.Reference("id"), int64(3)), nil))
+	_, err = peerTxn.Commit(ctx)
+	require.NoError(t, err)
+
+	_, err = staleTxn.Commit(ctx)
+	require.Error(t, err)
+
+	committed, err := cat.LoadTable(ctx, table.Identifier{"db", "no_replay_removals"})
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1, 2, 4, 5, 6, 8, 9, 10}, idsInTable(t, committed))
+	assert.Equal(t, 1, liveDVCount(t, committed),
+		"the peer's replacement DV must remain the only live DV")
 }

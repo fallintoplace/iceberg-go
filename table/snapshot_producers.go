@@ -749,7 +749,10 @@ type snapshotProducer struct {
 	deletedFiles            map[string]iceberg.DataFile
 	deletedDeleteFiles      map[string]iceberg.DataFile
 	deletedDVsByRef         map[string]iceberg.DataFile
-	snapshotProps           iceberg.Properties
+	// Only COW operations that validate concurrent deletes may replay DV removals
+	// whose referenced data files are removed by the same commit.
+	allowDVRemovalReplay bool
+	snapshotProps        iceberg.Properties
 }
 
 // deleteFileAddition carries the data sequence number of a rewritten delete
@@ -1637,20 +1640,21 @@ func (sp *snapshotProducer) commitManifests(newManifests, addedContent []iceberg
 		})
 	}
 
-	// Delete-file removals (path-keyed delete files and ref-keyed
-	// deletion vectors) are resolved against the snapshot this producer
-	// built on — removal identity is snapshot-relative. A
-	// refresh-and-replay would inherit a concurrently committed
-	// replacement from the fresh base while the stale removal replays
-	// as a no-op (checkRemovedFiles deliberately treats a superseded
-	// entry as absent), stranding two live deletion vectors on one data
-	// file. Such commits must fail on a CAS conflict instead of
-	// replaying; the caller re-resolves the removal against the current
-	// snapshot and retries. Data-file removals (deletedFiles) stay
-	// replayable: they are path-keyed and checkRemovedFiles fails the
-	// rebuild terminally when the path is gone from the fresh base.
-	if len(sp.deletedDeleteFiles) > 0 || len(sp.deletedDVsByRef) > 0 {
+	// Delete-file removals are normally non-replayable: they refer to
+	// entries in the original snapshot, and a retry could inherit a
+	// peer's replacement while the stale removal becomes a no-op.
+	// A copy-on-write operation can safely replay a DV removal when it
+	// also removes the DV's data file. Its rewrite validator rejects new
+	// deletes against that file, while checkRemovedFiles rejects a peer
+	// that removed the data file. Other producers remain non-replayable.
+	if len(sp.deletedDeleteFiles) > 0 {
 		sp.txn.noReplay = true
+	}
+	for ref := range sp.deletedDVsByRef {
+		if _, removesData := sp.deletedFiles[ref]; !removesData || !sp.allowDVRemovalReplay {
+			sp.txn.noReplay = true
+			break
+		}
 	}
 
 	// Build the manifest-list rebuild closure. It is called by doCommit

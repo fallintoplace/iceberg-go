@@ -122,6 +122,7 @@ func (t *Transaction) performCopyOnWriteDeletion(ctx context.Context, operation 
 	}
 	if len(removed) > 0 {
 		t.addValidator(rewriteValidator(removed))
+		updater.allowDVRemovalReplay = true
 	}
 
 	return updater, wfs, nil
