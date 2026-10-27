@@ -79,6 +79,8 @@ Per-release notes (highlights, breaking changes, contributors) are published on 
 
 - **File writes and directory walks now take an operation context.** Update `WriteFileIO` and `ListableIO` implementations and calls to `Create`, `WriteFile`, and `WalkDir` to pass `context.Context`; cloud writes and listings use it for cancellation.
 
+- **Row-lineage schema selection uses named options.** Replace `iceberg.SchemaWithRowLineageColumns(schema, rowID, sequence)` with `iceberg.SchemaWithRowLineageColumns(schema, iceberg.RowLineageColumns{RowID: rowID, LastUpdatedSequenceNumber: sequence})`. The `SchemaWithRowID` and `SchemaWithRowLineage` helpers are unchanged.
+
 ## Verifying and producing releases
 
 If you are validating an RC or cutting a new release, see:

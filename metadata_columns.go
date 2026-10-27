@@ -87,18 +87,28 @@ func IsMetadataColumn(fieldID int) bool {
 	return fieldID == RowIDFieldID || fieldID == LastUpdatedSequenceNumberFieldID
 }
 
+// RowLineageColumns selects which metadata columns should be added to a schema.
+// A false field does not remove a column already present in the schema.
+type RowLineageColumns struct {
+	// RowID includes the _row_id metadata column.
+	RowID bool
+	// LastUpdatedSequenceNumber includes _last_updated_sequence_number.
+	LastUpdatedSequenceNumber bool
+}
+
 // SchemaWithRowLineage appends both row-lineage metadata columns (_row_id,
 // _last_updated_sequence_number) so a CoW rewrite or compaction preserves them.
 func SchemaWithRowLineage(s *Schema) *Schema {
-	return SchemaWithRowLineageColumns(s, true, true)
+	return SchemaWithRowLineageColumns(s, RowLineageColumns{RowID: true, LastUpdatedSequenceNumber: true})
 }
 
-// SchemaWithRowLineageColumns appends the requested row-lineage columns: _row_id
-// when rowID, _last_updated_sequence_number when lastUpdatedSeq. Request exactly
-// the columns you will materialize so the read schema matches the produced batch.
+// SchemaWithRowLineageColumns returns a copy of s with the selected row-lineage
+// metadata columns appended if missing. Select only the columns the reader will
+// materialize so its schema matches the produced batch.
 //
-// Idempotent by reserved field ID; always clones the field slice (no aliasing).
-func SchemaWithRowLineageColumns(s *Schema, rowID, lastUpdatedSeq bool) *Schema {
+// Selection is idempotent by reserved field ID. Existing metadata columns are
+// preserved even when not selected; the field slice is always cloned.
+func SchemaWithRowLineageColumns(s *Schema, columns RowLineageColumns) *Schema {
 	if s == nil {
 		return nil
 	}
@@ -115,10 +125,10 @@ func SchemaWithRowLineageColumns(s *Schema, rowID, lastUpdatedSeq bool) *Schema 
 		}
 	}
 
-	if rowID && !hasRowID {
+	if columns.RowID && !hasRowID {
 		fields = append(fields, RowID())
 	}
-	if lastUpdatedSeq && !hasSeqNum {
+	if columns.LastUpdatedSequenceNumber && !hasSeqNum {
 		fields = append(fields, LastUpdatedSequenceNumber())
 	}
 
@@ -134,5 +144,5 @@ func SchemaWithRowLineageColumns(s *Schema, rowID, lastUpdatedSeq bool) *Schema 
 //
 // Idempotent on RowIDFieldID; allocates a fresh field slice.
 func SchemaWithRowID(s *Schema) *Schema {
-	return SchemaWithRowLineageColumns(s, true, false)
+	return SchemaWithRowLineageColumns(s, RowLineageColumns{RowID: true})
 }

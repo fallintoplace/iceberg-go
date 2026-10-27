@@ -2758,7 +2758,10 @@ func (as *arrowScan) recordsFromTask(ctx context.Context, task tblutils.Enumerat
 	if synthesizeRowID || synthesizeSeq {
 		// Mirror the columns synthesize will append so ToRequestedSchema never
 		// resolves a lineage field missing from the batch.
-		readSchema = iceberg.SchemaWithRowLineageColumns(iceSchema, synthesizeRowID, synthesizeSeq)
+		readSchema = iceberg.SchemaWithRowLineageColumns(iceSchema, iceberg.RowLineageColumns{
+			RowID:                     synthesizeRowID,
+			LastUpdatedSequenceNumber: synthesizeSeq,
+		})
 		taskVal := task.Value
 		// Only _row_id depends on position, so a cursor is taken only then.
 		var cursor *rowPositionCursor
