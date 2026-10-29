@@ -413,3 +413,36 @@ func TestMemIO_WalkDirNestedPrefixes(t *testing.T) {
 		{path: "mem://bucket/root/ab/second.parquet", size: 11},
 	}, got)
 }
+
+func TestMemIO_WalkDirVisitsSnapshotWhenCallbackAddsFile(t *testing.T) {
+	ctx := context.Background()
+	memIO := icebergio.NewMemFS()
+	const root = "mem://bucket/root"
+	require.NoError(t, memIO.WriteFile(ctx, root+"/a.txt", []byte("a")))
+
+	var visited []string
+	err := memIO.WalkDir(ctx, root, func(name string, _ fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		visited = append(visited, name)
+		if name == root {
+			return memIO.WriteFile(ctx, root+"/b.txt", []byte("b"))
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{root, root + "/a.txt"}, visited)
+
+	visited = nil
+	require.NoError(t, memIO.WalkDir(ctx, root, func(name string, _ fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		visited = append(visited, name)
+
+		return nil
+	}))
+	assert.Equal(t, []string{root, root + "/a.txt", root + "/b.txt"}, visited)
+}

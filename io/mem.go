@@ -113,60 +113,22 @@ func (m *MemFS) WriteFile(ctx context.Context, name string, content []byte) erro
 	return nil
 }
 
+type memWalkEntry struct {
+	path  string
+	size  int64
+	isDir bool
+}
+
 func (m *MemFS) WalkDir(ctx context.Context, root string, fn fs.WalkDirFunc) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	type walkEntry struct {
-		path  string
-		size  int64
-		isDir bool
-	}
-
 	root = strings.TrimRight(root, "/")
-
-	m.mu.RLock()
-	entriesByPath := make(map[string]walkEntry)
-	addEntry := func(entry walkEntry) {
-		current, exists := entriesByPath[entry.path]
-		if !exists || (!entry.isDir && current.isDir) {
-			entriesByPath[entry.path] = entry
-		}
+	entriesByPath, err := m.snapshotWalkEntries(ctx, root)
+	if err != nil {
+		return err
 	}
-	for key, data := range m.files {
-		if err := ctx.Err(); err != nil {
-			m.mu.RUnlock()
-
-			return err
-		}
-
-		if !memPathInRoot(key, root) {
-			continue
-		}
-
-		if key == root {
-			addEntry(walkEntry{path: key, size: int64(len(data))})
-
-			continue
-		}
-
-		addEntry(walkEntry{path: root, isDir: true})
-		relative := strings.TrimPrefix(key, root+"/")
-		// Keep empty-root paths relative (e.g. "/a/b" is walked as "a/b").
-		filePath, start := relative, 0
-		if root != "" {
-			filePath = key
-			start = len(key) - len(relative)
-		}
-		for i := range len(relative) {
-			if relative[i] == '/' {
-				addEntry(walkEntry{path: filePath[:start+i], isDir: true})
-			}
-		}
-		addEntry(walkEntry{path: filePath, size: int64(len(data))})
-	}
-	m.mu.RUnlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -180,9 +142,59 @@ func (m *MemFS) WalkDir(ctx context.Context, root string, fn fs.WalkDirFunc) err
 		return err
 	}
 	if rootEntry, ok := entriesByPath[root]; ok && !rootEntry.isDir {
-		entriesByPath = map[string]walkEntry{root: rootEntry}
+		entriesByPath = map[string]memWalkEntry{root: rootEntry}
 	}
 
+	return walkMemEntries(ctx, root, entriesByPath, fn)
+}
+
+// snapshotWalkEntries collects files and implied directories under a read lock.
+// Callbacks run after the lock is released.
+func (m *MemFS) snapshotWalkEntries(ctx context.Context, root string) (map[string]memWalkEntry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	entriesByPath := make(map[string]memWalkEntry)
+	addEntry := func(entry memWalkEntry) {
+		current, exists := entriesByPath[entry.path]
+		if !exists || (!entry.isDir && current.isDir) {
+			entriesByPath[entry.path] = entry
+		}
+	}
+	for key, data := range m.files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		if !memPathInRoot(key, root) {
+			continue
+		}
+
+		if key == root {
+			addEntry(memWalkEntry{path: key, size: int64(len(data))})
+
+			continue
+		}
+
+		addEntry(memWalkEntry{path: root, isDir: true})
+		relative := strings.TrimPrefix(key, root+"/")
+		// Keep empty-root paths relative (e.g. "/a/b" is walked as "a/b").
+		filePath, start := relative, 0
+		if root != "" {
+			filePath = key
+			start = len(key) - len(relative)
+		}
+		for i := range len(relative) {
+			if relative[i] == '/' {
+				addEntry(memWalkEntry{path: filePath[:start+i], isDir: true})
+			}
+		}
+		addEntry(memWalkEntry{path: filePath, size: int64(len(data))})
+	}
+	return entriesByPath, nil
+}
+
+func walkMemEntries(ctx context.Context, root string, entriesByPath map[string]memWalkEntry, fn fs.WalkDirFunc) error {
 	paths := make([]string, 0, len(entriesByPath))
 	for entryPath := range entriesByPath {
 		if err := ctx.Err(); err != nil {
