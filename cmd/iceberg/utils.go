@@ -90,49 +90,12 @@ func parseSortOrder(sortStr string) (table.SortOrder, error) {
 		if field == "" {
 			continue
 		}
-		parts := strings.Split(field, ":")
-		direction := "asc" // default value
-		var nullOrder table.NullOrder
 
-		if len(parts) > 1 {
-			direction = strings.TrimSpace(parts[1])
+		sortField, err := parseSortField(field, i)
+		if err != nil {
+			return table.UnsortedSortOrder, err
 		}
-
-		var sortDirection table.SortDirection
-
-		switch strings.ToLower(direction) {
-		case "asc":
-			sortDirection = table.SortASC
-		case "desc":
-			sortDirection = table.SortDESC
-		default:
-			return table.UnsortedSortOrder, fmt.Errorf("invalid sort direction: %s", direction)
-		}
-
-		// Parse null order
-		if len(parts) > 2 {
-			nullOrderStr := strings.TrimSpace(parts[2])
-			switch strings.ToLower(nullOrderStr) {
-			case "nulls-first":
-				nullOrder = table.NullsFirst
-			case "nulls-last":
-				nullOrder = table.NullsLast
-			default:
-				return table.UnsortedSortOrder, fmt.Errorf("invalid null order: %s", nullOrderStr)
-			}
-		} else {
-			if sortDirection == table.SortDESC {
-				nullOrder = table.NullsLast
-			} else {
-				nullOrder = table.NullsFirst
-			}
-		}
-		sortFields = append(sortFields, table.SortField{
-			SourceIDs: []int{i + 1},
-			Transform: iceberg.IdentityTransform{},
-			Direction: sortDirection,
-			NullOrder: nullOrder,
-		})
+		sortFields = append(sortFields, sortField)
 	}
 	if len(sortFields) == 0 {
 		return table.UnsortedSortOrder, nil
@@ -142,4 +105,51 @@ func parseSortOrder(sortStr string) (table.SortOrder, error) {
 		table.InitialSortOrderID,
 		sortFields,
 	)
+}
+
+// parseSortField decodes one CLI sort field. The source position is the index
+// in the original comma-separated input, including empty fields.
+func parseSortField(field string, sourcePosition int) (table.SortField, error) {
+	parts := strings.Split(field, ":")
+	direction := "asc" // default value
+
+	if len(parts) > 1 {
+		direction = strings.TrimSpace(parts[1])
+	}
+
+	var sortDirection table.SortDirection
+	switch strings.ToLower(direction) {
+	case "asc":
+		sortDirection = table.SortASC
+	case "desc":
+		sortDirection = table.SortDESC
+	default:
+		return table.SortField{}, fmt.Errorf("invalid sort direction: %s", direction)
+	}
+
+	var nullOrder table.NullOrder
+	if len(parts) > 2 {
+		nullOrderStr := strings.TrimSpace(parts[2])
+		switch strings.ToLower(nullOrderStr) {
+		case "nulls-first":
+			nullOrder = table.NullsFirst
+		case "nulls-last":
+			nullOrder = table.NullsLast
+		default:
+			return table.SortField{}, fmt.Errorf("invalid null order: %s", nullOrderStr)
+		}
+	} else {
+		if sortDirection == table.SortDESC {
+			nullOrder = table.NullsLast
+		} else {
+			nullOrder = table.NullsFirst
+		}
+	}
+
+	return table.SortField{
+		SourceIDs: []int{sourcePosition + 1},
+		Transform: iceberg.IdentityTransform{},
+		Direction: sortDirection,
+		NullOrder: nullOrder,
+	}, nil
 }
