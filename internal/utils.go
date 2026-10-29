@@ -206,14 +206,19 @@ type SlicePacker[T any] struct {
 	LargestBinFirst bool
 }
 
-func (s *SlicePacker[T]) Pack(items []T, weightFunc func(T) int64) [][]T {
-	if s.shouldUseIndexedFIFO(len(items)) {
-		return slices.Collect(indexedFIFOPackingIterator(slices.Values(items),
+// packSequence shares backend selection between forward and reverse packing.
+func (s *SlicePacker[T]) packSequence(input iter.Seq[T], itemCount int, weightFunc func(T) int64) [][]T {
+	if s.shouldUseIndexedFIFO(itemCount) {
+		return slices.Collect(indexedFIFOPackingIterator(input,
 			s.TargetWeight, s.Lookback, weightFunc))
 	}
 
-	return slices.Collect(PackingIterator(slices.Values(items), s.TargetWeight,
-		s.Lookback, weightFunc, s.LargestBinFirst))
+	return slices.Collect(PackingIterator(input,
+		s.TargetWeight, s.Lookback, weightFunc, s.LargestBinFirst))
+}
+
+func (s *SlicePacker[T]) Pack(items []T, weightFunc func(T) int64) [][]T {
+	return s.packSequence(slices.Values(items), len(items), weightFunc)
 }
 
 func (s *SlicePacker[T]) PackEnd(items []T, weightFunc func(T) int64) [][]T {
@@ -225,14 +230,7 @@ func (s *SlicePacker[T]) PackEnd(items []T, weightFunc func(T) int64) [][]T {
 		}
 	}
 
-	var packed [][]T
-	if s.shouldUseIndexedFIFO(len(items)) {
-		packed = slices.Collect(indexedFIFOPackingIterator(reversed,
-			s.TargetWeight, s.Lookback, weightFunc))
-	} else {
-		packed = slices.Collect(PackingIterator(reversed,
-			s.TargetWeight, s.Lookback, weightFunc, s.LargestBinFirst))
-	}
+	packed := s.packSequence(reversed, len(items), weightFunc)
 	slices.Reverse(packed)
 
 	for _, items := range packed {
