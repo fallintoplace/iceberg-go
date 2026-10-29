@@ -149,8 +149,8 @@ func (cfg Config) Validate() error {
 // Group represents a set of files in the same partition
 // that should be compacted together.
 type Group struct {
-	// PartitionKey is an opaque grouping key derived from partition values.
-	// Empty string for unpartitioned tables.
+	// PartitionKey is an opaque, collision-safe key for the spec and partition.
+	// Unpartitioned tables still include the spec ID.
 	PartitionKey string
 
 	// Tasks are the input FileScanTasks that should be compacted together.
@@ -248,7 +248,10 @@ func (cfg Config) PlanCompaction(tasks []table.FileScanTask) (Plan, error) {
 			continue
 		}
 
-		key := partitionBucketKey(t.File.SpecID(), internal.BorrowedDataFilePartition(t.File))
+		key, err := table.CanonicalPartitionKey(t.File.SpecID(), internal.BorrowedDataFilePartition(t.File))
+		if err != nil {
+			return Plan{}, fmt.Errorf("compaction file %q has invalid partition: %w", t.File.FilePath(), err)
+		}
 		index, ok := partitionIndices[key]
 		if !ok {
 			index = len(partitionBuckets)

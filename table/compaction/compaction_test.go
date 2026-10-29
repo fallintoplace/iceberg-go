@@ -677,7 +677,7 @@ func TestPlanCompaction_UnpartitionedTable(t *testing.T) {
 
 	require.NotEmpty(t, plan.Groups)
 	for _, g := range plan.Groups {
-		assert.Contains(t, g.PartitionKey, "0:")
+		assert.Contains(t, g.PartitionKey, "0|")
 	}
 }
 
