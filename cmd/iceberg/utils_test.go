@@ -242,3 +242,40 @@ func TestParseSortOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSortOrderTokenCompatibility(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		sourceID  int
+		direction table.SortDirection
+		nullOrder table.NullOrder
+		wantErr   string
+	}{
+		{name: "default direction and null order", input: "col", sourceID: 1, direction: table.SortASC, nullOrder: table.NullsFirst},
+		{name: "empty fields keep source positions and extra tokens are ignored", input: ",col:DeSc:NULLS-FIRST:ignored", sourceID: 2, direction: table.SortDESC, nullOrder: table.NullsFirst},
+		{name: "case insensitive direction and null order", input: "col:ASC:NULLS-LAST", sourceID: 1, direction: table.SortASC, nullOrder: table.NullsLast},
+		{name: "invalid direction", input: "col:up", wantErr: "invalid sort direction: up"},
+		{name: "empty direction", input: "col:", wantErr: "invalid sort direction: "},
+		{name: "invalid null order", input: "col:asc:middle", wantErr: "invalid null order: middle"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			order, err := parseSortOrder(tt.input)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				require.Equal(t, table.UnsortedSortOrder.OrderID(), order.OrderID())
+
+				return
+			}
+
+			require.NoError(t, err)
+			fields := order.Fields()
+			require.Len(t, fields, 1)
+			require.Equal(t, []int{tt.sourceID}, fields[0].SourceIDs)
+			require.Equal(t, tt.direction, fields[0].Direction)
+			require.Equal(t, tt.nullOrder, fields[0].NullOrder)
+		})
+	}
+}
