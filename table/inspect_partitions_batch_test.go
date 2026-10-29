@@ -136,8 +136,8 @@ func TestInspectPartitionsAcrossRecordBatchBoundary(t *testing.T) {
 			seen[value] = true
 			require.EqualValues(t, 1, records.Value(i))
 			key := inspectPartitionKey(map[int]any{1000: value})
-			if len(seen) > 1 {
-				require.Less(t, previousKey, key)
+			if len(seen) > 1 && key <= previousKey {
+				t.Fatalf("out-of-order partition key %q after %q", key, previousKey)
 			}
 			previousKey = key
 		}
