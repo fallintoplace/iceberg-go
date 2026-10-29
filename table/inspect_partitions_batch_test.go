@@ -97,6 +97,56 @@ func TestInspectPartitionAggregateReaderBoundedBatches(t *testing.T) {
 	}
 }
 
+// Exercise the public metadata-table reader across a real manifest, including
+// the boundary between two Arrow batches.
+func TestInspectPartitionsAcrossRecordBatchBoundary(t *testing.T) {
+	const count = inspectRecordBatchSize + 1
+
+	spec := partitionedSpec()
+	const snapshotID = int64(1)
+	sequenceNumber := int64(1)
+	entries := make([]iceberg.ManifestEntry, 0, count)
+	for index := range count {
+		dataFile := newTestDataFileWithCount(
+			t, spec, fmt.Sprintf("mem://default/table-location/data/partition-%d.parquet", index),
+			map[int]any{1000: int32(index)}, 1)
+		entries = append(entries, iceberg.NewManifestEntry(
+			iceberg.EntryStatusADDED, new(snapshotID), &sequenceNumber, &sequenceNumber, dataFile))
+	}
+
+	tbl := inspectFilesTableWithManifests(t, spec, inspectManifestSpec{
+		content: iceberg.ManifestContentData,
+		entries: entries,
+	})
+	reader, err := tbl.Inspect().Partitions(t.Context())
+	require.NoError(t, err)
+	defer reader.Release()
+
+	seen := make(map[int32]bool, count)
+	var previousKey string
+	var batchSizes []int
+	for reader.Next() {
+		batch := reader.RecordBatch()
+		batchSizes = append(batchSizes, int(batch.NumRows()))
+		partitions := batch.Column(0).(*array.Struct).Field(0).(*array.Int32)
+		records := batch.Column(2).(*array.Int64)
+		for i := range int(batch.NumRows()) {
+			value := partitions.Value(i)
+			require.False(t, seen[value], "duplicate partition %d", value)
+			seen[value] = true
+			require.EqualValues(t, 1, records.Value(i))
+			key := inspectPartitionKey(map[int]any{1000: value})
+			if len(seen) > 1 {
+				require.Less(t, previousKey, key)
+			}
+			previousKey = key
+		}
+	}
+	require.NoError(t, reader.Err())
+	require.Len(t, seen, count)
+	require.Equal(t, []int{inspectRecordBatchSize, 1}, batchSizes)
+}
+
 func TestInspectPartitionAggregateReaderCancellation(t *testing.T) {
 	partitionType, arrowSchema, aggregates := inspectPartitionBatchFixture(
 		t, 2*inspectRecordBatchSize)
