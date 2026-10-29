@@ -52,6 +52,7 @@ type equalityDeleteSet struct {
 // kept as separate sets (not merged).
 func readAllEqualityDeleteFiles(ctx context.Context, fs iceio.IO, schema *iceberg.Schema, tasks []FileScanTask, concurrency int) (map[int][]*equalityDeleteSet, error) {
 	type deleteFileInfo struct {
+		id       int
 		file     iceberg.DataFile
 		fieldIDs []int
 	}
@@ -72,6 +73,7 @@ func readAllEqualityDeleteFiles(ctx context.Context, fs iceio.IO, schema *iceber
 			hasAny = true
 			if _, ok := uniqueDeletes[d.FilePath()]; !ok {
 				uniqueDeletes[d.FilePath()] = deleteFileInfo{
+					id:       len(uniqueDeletes),
 					file:     d,
 					fieldIDs: d.EqualityFieldIDs(),
 				}
@@ -119,70 +121,20 @@ func readAllEqualityDeleteFiles(ctx context.Context, fs iceio.IO, schema *iceber
 		_ = g.Wait()
 	}()
 
-	type perFileDeleteKeys struct {
-		fieldIDs []int
-		colNames []string
-		keys     set[string]
-	}
-
-	perFile := make(map[string]*perFileDeleteKeys)
+	perFile := make(map[string]*equalityDeleteFileSet)
 	for result := range resultCh {
-		perFile[result.path] = &perFileDeleteKeys{
+		perFile[result.path] = newEqualityDeleteFileSet(uniqueDeletes[result.path].id, &equalityDeleteSet{
 			fieldIDs: result.fieldIDs,
 			colNames: result.colNames,
 			keys:     result.keys,
-		}
+		})
 	}
 
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	// Build per-task delete sets. Group by field IDs so delete files with
-	// different equality field sets are applied independently.
-	perTask := make(map[int][]*equalityDeleteSet)
-	for i, t := range tasks {
-		if len(t.EqualityDeleteFiles) == 0 {
-			continue
-		}
-
-		// Group delete files by their field IDs key.
-		groups := make(map[string]*equalityDeleteSet)
-		for _, d := range t.EqualityDeleteFiles {
-			dk, ok := perFile[d.FilePath()]
-			if !ok {
-				continue
-			}
-
-			groupKey := fmt.Sprint(dk.fieldIDs)
-			g, exists := groups[groupKey]
-			if !exists {
-				g = &equalityDeleteSet{
-					keys:     make(set[string]),
-					fieldIDs: dk.fieldIDs,
-					colNames: dk.colNames,
-				}
-				groups[groupKey] = g
-			}
-
-			for k := range dk.keys {
-				g.keys[k] = struct{}{}
-			}
-		}
-
-		sets := make([]*equalityDeleteSet, 0, len(groups))
-		for _, g := range groups {
-			if len(g.keys) > 0 {
-				sets = append(sets, g)
-			}
-		}
-
-		if len(sets) > 0 {
-			perTask[i] = sets
-		}
-	}
-
-	return perTask, nil
+	return buildEqualityDeleteSetsPerTask(tasks, perFile), nil
 }
 
 // readEqualityDeleteFile reads a single equality delete file and returns
