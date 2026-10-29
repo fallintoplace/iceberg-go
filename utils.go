@@ -155,21 +155,32 @@ func newLiteralSet(vals ...Literal) Set[Literal] {
 	return s
 }
 
-func (l literalSet) addliteral(v Literal) {
-	switch v := v.(type) {
+// literalSetKey returns the map key and whether lookup must verify Literal.Equals.
+// Byte-backed literals use hashes because their values are not comparable Go keys.
+// Keep the same hashing rule for insertion and lookup.
+func literalSetKey(lit Literal) (key any, checkEquals bool) {
+	switch v := lit.(type) {
 	case FixedLiteral:
-		l[maphash.Bytes(lzseed, []byte(v))] = struct{ orig Literal }{v}
+		return maphash.Bytes(lzseed, []byte(v)), true
 	case BinaryLiteral:
-		l[maphash.Bytes(lzseed, []byte(v))] = struct{ orig Literal }{v}
+		return maphash.Bytes(lzseed, []byte(v)), true
 	case GeoLiteral:
-		// GeoLiteral holds a []byte, so it cannot be used as a map key directly.
-		l[maphash.Bytes(lzseed, v.Value())] = struct{ orig Literal }{v}
+		return maphash.Bytes(lzseed, v.Value()), true
 	case VariantLiteral:
-		// VariantLiteral holds []byte buffers, so it cannot be used as a map key directly.
-		l[variantKey(v)] = struct{ orig Literal }{v}
+		return variantKey(v), true
 	default:
-		l[v] = struct{ orig Literal }{}
+		return lit, false
 	}
+}
+
+func (l literalSet) addliteral(v Literal) {
+	key, checkEquals := literalSetKey(v)
+	if checkEquals {
+		l[key] = struct{ orig Literal }{v}
+		return
+	}
+
+	l[key] = struct{ orig Literal }{}
 }
 
 func (l literalSet) Add(lits ...Literal) {
@@ -179,40 +190,16 @@ func (l literalSet) Add(lits ...Literal) {
 }
 
 func (l literalSet) Contains(lit Literal) bool {
-	switch lit := lit.(type) {
-	case BinaryLiteral:
-		v, ok := l[maphash.Bytes(lzseed, []byte(lit))]
-		if !ok {
-			return false
-		}
-
-		return lit.Equals(v.orig)
-	case FixedLiteral:
-		v, ok := l[maphash.Bytes(lzseed, []byte(lit))]
-		if !ok {
-			return false
-		}
-
-		return lit.Equals(v.orig)
-	case GeoLiteral:
-		v, ok := l[maphash.Bytes(lzseed, lit.Value())]
-		if !ok {
-			return false
-		}
-
-		return lit.Equals(v.orig)
-	case VariantLiteral:
-		v, ok := l[variantKey(lit)]
-		if !ok {
-			return false
-		}
-
-		return lit.Equals(v.orig)
-	default:
-		_, ok := l[lit]
-
-		return ok
+	key, checkEquals := literalSetKey(lit)
+	value, ok := l[key]
+	if !ok {
+		return false
 	}
+	if checkEquals {
+		return lit.Equals(value.orig)
+	}
+
+	return true
 }
 
 func (l literalSet) Members() []Literal {

@@ -80,3 +80,42 @@ func TestLiteralSetVariant(t *testing.T) {
 		assert.True(t, set.Contains(VariantLiteral(right)))
 	})
 }
+
+func TestLiteralSetKeyConsistency(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   Literal
+		equal   Literal
+		missing Literal
+	}{
+		{"binary", BinaryLiteral{1, 2}, BinaryLiteral{1, 2}, BinaryLiteral{1, 3}},
+		{"fixed", FixedLiteral{4, 5}, FixedLiteral{4, 5}, FixedLiteral{4, 6}},
+		{
+			"geo",
+			GeoLiteral{val: []byte{7, 8}, typ: GeometryType{}},
+			GeoLiteral{val: []byte{7, 8}, typ: GeometryType{}},
+			GeoLiteral{val: []byte{7, 9}, typ: GeometryType{}},
+		},
+		{"scalar", NewLiteral(int32(10)), NewLiteral(int32(10)), NewLiteral(int32(11))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			set := newLiteralSet(tt.value)
+			assert.True(t, set.Contains(tt.equal))
+			assert.False(t, set.Contains(tt.missing))
+
+			set.Add(tt.equal)
+			assert.Equal(t, 1, set.Len())
+			assert.True(t, set.Contains(tt.value))
+		})
+	}
+
+	t.Run("hashed key still checks literal type", func(t *testing.T) {
+		binarySet := newLiteralSet(BinaryLiteral{1, 2})
+		assert.False(t, binarySet.Contains(FixedLiteral{1, 2}))
+
+		geoSet := newLiteralSet(GeoLiteral{val: []byte{1, 2}, typ: GeometryType{}})
+		assert.False(t, geoSet.Contains(GeoLiteral{val: []byte{1, 2}, typ: GeographyType{}}))
+	})
+}
