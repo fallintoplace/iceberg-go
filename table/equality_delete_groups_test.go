@@ -120,6 +120,48 @@ func TestBuildEqualityDeleteSetsPerTaskSeparatesFieldsAndSkipsEmpty(t *testing.T
 	require.NotContains(t, got, 3)
 }
 
+// benchmarkLegacyEqualityDeleteSets matches the previous per-task assembly.
+// It is kept only in the benchmark to compare against the original algorithm.
+func benchmarkLegacyEqualityDeleteSets(
+	tasks []FileScanTask,
+	perFile map[string]*equalityDeleteFileSet,
+) map[int][]*equalityDeleteSet {
+	perTask := make(map[int][]*equalityDeleteSet)
+	for i, task := range tasks {
+		if len(task.EqualityDeleteFiles) == 0 {
+			continue
+		}
+		groups := make(map[string]*equalityDeleteSet)
+		for _, file := range task.EqualityDeleteFiles {
+			dk, ok := perFile[file.FilePath()]
+			if !ok {
+				continue
+			}
+			key := fmt.Sprint(dk.fieldIDs)
+			group, exists := groups[key]
+			if !exists {
+				group = &equalityDeleteSet{
+					keys: make(set[string]), fieldIDs: dk.fieldIDs, colNames: dk.colNames,
+				}
+				groups[key] = group
+			}
+			for value := range dk.keys {
+				group.keys[value] = struct{}{}
+			}
+		}
+		sets := make([]*equalityDeleteSet, 0, len(groups))
+		for _, group := range groups {
+			if len(group.keys) > 0 {
+				sets = append(sets, group)
+			}
+		}
+		if len(sets) > 0 {
+			perTask[i] = sets
+		}
+	}
+	return perTask
+}
+
 var equalityDeleteGroupingBenchmarkSink map[int][]*equalityDeleteSet
 
 // BenchmarkBuildEqualityDeleteSetsPerTaskShared isolates per-task assembly
@@ -149,10 +191,20 @@ func BenchmarkBuildEqualityDeleteSetsPerTaskShared(b *testing.B) {
 			for idx := range tasks {
 				tasks[idx].EqualityDeleteFiles = files
 			}
-			b.ReportAllocs()
-			b.ResetTimer()
-			for idx := 0; idx < b.N; idx++ {
-				equalityDeleteGroupingBenchmarkSink = buildEqualityDeleteSetsPerTask(tasks, perFile)
+			for _, impl := range []struct {
+				name string
+				run  func([]FileScanTask, map[string]*equalityDeleteFileSet) map[int][]*equalityDeleteSet
+			}{
+				{"before", benchmarkLegacyEqualityDeleteSets},
+				{"after", buildEqualityDeleteSetsPerTask},
+			} {
+				b.Run(impl.name, func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for idx := 0; idx < b.N; idx++ {
+						equalityDeleteGroupingBenchmarkSink = impl.run(tasks, perFile)
+					}
+				})
 			}
 		})
 	}
