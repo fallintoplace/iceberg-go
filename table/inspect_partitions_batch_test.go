@@ -181,6 +181,7 @@ func BenchmarkInspectPartitionBatchEncoding(b *testing.B) {
 				b.ReportAllocs()
 				b.ReportMetric(float64(count), "partitions/op")
 				b.ResetTimer()
+				var maxBatchRows int64
 				for b.Loop() {
 					var reader array.RecordReader
 					if bounded {
@@ -202,7 +203,11 @@ func BenchmarkInspectPartitionBatchEncoding(b *testing.B) {
 					}
 					var seen int64
 					for reader.Next() {
-						seen += reader.RecordBatch().NumRows()
+						rows := reader.RecordBatch().NumRows()
+						seen += rows
+						if rows > maxBatchRows {
+							maxBatchRows = rows
+						}
 					}
 					readErr := reader.Err()
 					reader.Release()
@@ -214,6 +219,7 @@ func BenchmarkInspectPartitionBatchEncoding(b *testing.B) {
 					}
 					inspectPartitionBatchBenchmarkSink = seen
 				}
+				b.ReportMetric(float64(maxBatchRows), "max_batch_rows")
 			})
 		}
 	}
