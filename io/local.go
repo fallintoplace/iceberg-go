@@ -87,16 +87,25 @@ func (LocalFS) ReadFile(name string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+func prepareLocalWritePath(name string) (string, error) {
+	filename, err := localPath(name)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+		return "", err
+	}
+
+	return filename, nil
+}
+
 func (LocalFS) Create(ctx context.Context, name string) (FileWriter, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	filename, err := localPath(name)
+	filename, err := prepareLocalWritePath(name)
 	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
 		return nil, err
 	}
 
@@ -108,11 +117,8 @@ func (LocalFS) WriteFile(ctx context.Context, name string, content []byte) error
 		return err
 	}
 
-	filename, err := localPath(name)
+	filename, err := prepareLocalWritePath(name)
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
 		return err
 	}
 

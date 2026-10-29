@@ -104,6 +104,60 @@ func TestLocalFSWalkDirReturnsCanceledContext(t *testing.T) {
 	assert.False(t, called)
 }
 
+func TestLocalFSCreateCreatesParentDirectories(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("created")
+
+	for _, tt := range []struct {
+		name     string
+		path     string
+		readPath string
+	}{
+		{
+			name:     "plain path",
+			path:     filepath.Join(dir, "plain", "nested", "file.txt"),
+			readPath: filepath.Join(dir, "plain", "nested", "file.txt"),
+		},
+		{
+			name:     "file scheme",
+			path:     fileURI(filepath.Join(dir, "scheme", "nested", "file.txt")),
+			readPath: filepath.Join(dir, "scheme", "nested", "file.txt"),
+		},
+		{
+			name:     "escaped file scheme",
+			path:     fileURI(filepath.Join(dir, "scheme with space", "nested", "file.txt")),
+			readPath: filepath.Join(dir, "scheme with space", "nested", "file.txt"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := LocalFS{}.Create(context.Background(), tt.path)
+			require.NoError(t, err)
+			_, err = out.Write(content)
+			require.NoError(t, err)
+			require.NoError(t, out.Close())
+
+			got, err := os.ReadFile(tt.readPath)
+			require.NoError(t, err)
+			assert.Equal(t, content, got)
+		})
+	}
+}
+
+func TestLocalFSWritesRejectCanceledContextBeforePreparingDirectories(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	path := filepath.Join(t.TempDir(), "nested", "file.txt")
+	_, err := (LocalFS{}).Create(ctx, path)
+	require.ErrorIs(t, err, context.Canceled)
+
+	err = (LocalFS{}).WriteFile(ctx, path, []byte("content"))
+	require.ErrorIs(t, err, context.Canceled)
+
+	_, err = os.Stat(filepath.Dir(path))
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
 func TestLocalFSWriteFileCreatesParentDirectories(t *testing.T) {
 	dir := t.TempDir()
 	content := []byte("content")
