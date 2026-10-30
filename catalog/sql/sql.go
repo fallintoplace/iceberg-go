@@ -1601,7 +1601,16 @@ func (c *Catalog) CreateView(ctx context.Context, identifier table.Identifier, s
 		return err
 	}
 
-	createdView, err := view.CreateViewWithIORegistry(ctx, c.name, identifier, schema, representation, nsIdent, loc, props, c.ioRegistry)
+	// Catalog credentials configure FileIO, but only view properties belong in metadata.
+	ioProps := maps.Clone(c.props)
+	if ioProps == nil {
+		ioProps = make(iceberg.Properties)
+	}
+	maps.Copy(ioProps, props)
+
+	createdView, err := view.CreateViewWithIOPropertiesAndRegistry(
+		ctx, c.name, identifier, schema, representation, nsIdent, loc, ioProps, props, c.ioRegistry,
+	)
 	if err != nil {
 		return err
 	}
