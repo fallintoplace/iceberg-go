@@ -127,3 +127,63 @@ func BenchmarkPlanCompaction(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkPlanCompactionSplitTasks measures planning with both unique files
+// and split scan tasks. The baseline used an extra whole-file slice and a
+// map holding full FileScanTask values, even for files skipped by compaction.
+func BenchmarkPlanCompactionSplitTasks(b *testing.B) {
+	for _, tc := range []struct {
+		files         int
+		rangesPerFile int
+		candidates    int
+	}{
+		{files: 20_000, rangesPerFile: 1, candidates: 0},
+		{files: 20_000, rangesPerFile: 4, candidates: 0},
+		{files: 100_000, rangesPerFile: 1, candidates: 10},
+		{files: 100_000, rangesPerFile: 4, candidates: 10},
+		{files: 100_000, rangesPerFile: 4, candidates: 100},
+	} {
+		b.Run(fmt.Sprintf("files=%d/ranges=%d/candidates=%d%%",
+			tc.files, tc.rangesPerFile, tc.candidates), func(b *testing.B) {
+			parts := make([]map[int]any, 128)
+			for i := range parts {
+				parts[i] = map[int]any{1000: int32(i), 1001: "us-east"}
+			}
+
+			// Build file metadata and split ranges outside the timed region.
+			tasks := make([]table.FileScanTask, 0, tc.files*tc.rangesPerFile)
+			for i := range tc.files {
+				sizeMB := int64(512)
+				if (i*37+i/97)%100 < tc.candidates {
+					sizeMB = 10
+				}
+				file := newPartitionedDataFile(
+					fmt.Sprintf("split-%d.parquet", i), sizeMB, parts[i%len(parts)])
+				for j := range tc.rangesPerFile {
+					start := file.size * int64(j) / int64(tc.rangesPerFile)
+					end := file.size * int64(j+1) / int64(tc.rangesPerFile)
+					tasks = append(tasks, table.FileScanTask{
+						File: file, Start: start, Length: end - start,
+					})
+				}
+			}
+
+			cfg := compaction.DefaultConfig()
+			b.ReportAllocs()
+			b.ReportMetric(float64(tc.files), "unique-files/op")
+			b.ResetTimer()
+
+			for b.Loop() {
+				plan, err := cfg.PlanCompaction(tasks)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if plan.TotalInputFiles != tc.files {
+					b.Fatalf("planned %d unique files, want %d",
+						plan.TotalInputFiles, tc.files)
+				}
+				compactionPlanBenchmarkSink = plan
+			}
+		})
+	}
+}

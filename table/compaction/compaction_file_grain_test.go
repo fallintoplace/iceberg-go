@@ -161,3 +161,61 @@ func TestPlanCompactionRejectsNilFile(t *testing.T) {
 	_, err := compaction.DefaultConfig().PlanCompaction([]table.FileScanTask{{}})
 	require.ErrorIs(t, err, table.ErrInvalidOperation)
 }
+
+// A duplicate split can appear after other files have already been selected
+// or skipped. It must not change file counts, grouping, or first-task metadata.
+func TestPlanCompactionInterleavedSplits(t *testing.T) {
+	firstFile := newDataFile("first.parquet", 10)
+	secondFile := newDataFile("second.parquet", 10)
+	skippedFile := newDataFile("optimal.parquet", 512)
+
+	first := makeTask(firstFile, 0, 0)
+	first.Start, first.Length = 1024, firstFile.size/2-1024
+	first.Residual = iceberg.EqualTo(iceberg.Reference("id"), int64(1))
+
+	other := makeTask(secondFile, 0, 0)
+	other.Length = secondFile.size / 2
+
+	skipped := makeTask(skippedFile, 0, 0)
+	skipped.Length = skippedFile.size / 2
+
+	duplicateFile := *firstFile
+	duplicate := first
+	duplicate.File = &duplicateFile
+	duplicate.Start, duplicate.Length = firstFile.size/2, firstFile.size/2
+
+	otherSplit := other
+	otherSplit.Start, otherSplit.Length = secondFile.size/2, secondFile.size/2
+	skippedSplit := skipped
+	skippedSplit.Start, skippedSplit.Length = skippedFile.size/2, skippedFile.size/2
+
+	tasks := []table.FileScanTask{first, skipped, other, duplicate, otherSplit, skippedSplit}
+	original := append([]table.FileScanTask(nil), tasks...)
+
+	cfg := compaction.DefaultConfig()
+	cfg.MinInputFiles = 1
+	plan, err := cfg.PlanCompaction(tasks)
+	require.NoError(t, err)
+	require.Equal(t, 3, plan.TotalInputFiles)
+	require.Equal(t, firstFile.size+secondFile.size+skippedFile.size, plan.TotalInputBytes)
+	require.Equal(t, 1, plan.SkippedFiles)
+	require.Len(t, plan.Groups, 1)
+	require.Len(t, plan.Groups[0].Tasks, 2)
+	require.Same(t, firstFile, plan.Groups[0].Tasks[0].File)
+	require.Equal(t, int64(0), plan.Groups[0].Tasks[0].Start)
+	require.Equal(t, firstFile.size, plan.Groups[0].Tasks[0].Length)
+	require.Nil(t, plan.Groups[0].Tasks[0].Residual)
+	require.Equal(t, original, tasks, "planning must not change caller tasks")
+
+	cfg.RewriteAll = true
+	rewriteAll, err := cfg.PlanCompaction(tasks)
+	require.NoError(t, err)
+	require.Equal(t, 3, rewriteAll.TotalInputFiles)
+	require.Zero(t, rewriteAll.SkippedFiles)
+	groupedFiles := 0
+	for _, group := range rewriteAll.Groups {
+		groupedFiles += len(group.Tasks)
+	}
+	require.Equal(t, 3, groupedFiles)
+	require.Equal(t, original, tasks, "rewrite-all must not change caller tasks")
+}

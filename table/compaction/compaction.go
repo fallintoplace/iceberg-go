@@ -237,42 +237,16 @@ func (cfg Config) PlanCompaction(tasks []table.FileScanTask) (Plan, error) {
 		return Plan{}, fmt.Errorf("invalid compaction config: %w", err)
 	}
 
-	// Compaction operates on whole physical files. A scan planner may split a
-	// file into multiple tasks, so collapse tasks by path before counting,
-	// selecting, or packing them. Keep the first task's delete and lineage
-	// metadata while replacing its range with the complete file range.
-	wholeFileTasks := make([]table.FileScanTask, 0, len(tasks))
-	seenFiles := make(map[string]table.FileScanTask, len(tasks))
-	for _, task := range tasks {
-		if task.File == nil {
-			return Plan{}, fmt.Errorf("%w: compaction task has no data file", table.ErrInvalidOperation)
-		}
-		path := task.File.FilePath()
-		if first, ok := seenFiles[path]; ok {
-			if !sameCompactionMetadata(first, task) {
-				return Plan{}, fmt.Errorf("%w: split tasks for %q have different delete or lineage metadata", table.ErrInvalidOperation, path)
-			}
+	// Keep the first task's input index rather than copying each task into a
+	// map and a second slice. Duplicate splits are checked against the
+	// original task, so normalization of the selected file cannot affect
+	// metadata validation.
+	seenFiles := make(map[string]int, len(tasks))
+	plan := Plan{}
 
-			continue
-		}
-		seenFiles[path] = task
-		task.Start = 0
-		task.Length = task.File.FileSizeBytes()
-		task.Residual = nil
-		wholeFileTasks = append(wholeFileTasks, task)
-	}
-
-	plan := Plan{
-		TotalInputFiles: len(wholeFileTasks),
-	}
-
-	for _, t := range wholeFileTasks {
-		plan.TotalInputBytes += t.File.FileSizeBytes()
-	}
-
-	// Only candidate files need partition keys. Most tables have many
-	// right-sized files, so avoid encoding their partitions and retaining
-	// empty buckets for files the planner will not rewrite.
+	// Only candidate files need partition keys. Classify each distinct file
+	// while deduplicating so large scans do not require extra passes over
+	// all files or retain copies of skipped tasks.
 	type partitionBucket struct {
 		key        string
 		candidates []table.FileScanTask
@@ -280,21 +254,43 @@ func (cfg Config) PlanCompaction(tasks []table.FileScanTask) (Plan, error) {
 	partitionIndices := make(map[string]int)
 	var partitionBuckets []partitionBucket
 
-	for _, t := range wholeFileTasks {
-		if !cfg.RewriteAll && !cfg.isCandidate(t) {
+	for i, task := range tasks {
+		if task.File == nil {
+			return Plan{}, fmt.Errorf("%w: compaction task has no data file", table.ErrInvalidOperation)
+		}
+		path := task.File.FilePath()
+		if firstIndex, ok := seenFiles[path]; ok {
+			if !sameCompactionMetadata(tasks[firstIndex], task) {
+				return Plan{}, fmt.Errorf("%w: split tasks for %q have different delete or lineage metadata", table.ErrInvalidOperation, path)
+			}
+
+			continue
+		}
+		seenFiles[path] = i
+
+		plan.TotalInputFiles++
+		size := task.File.FileSizeBytes()
+		plan.TotalInputBytes += size
+		if !cfg.RewriteAll && !cfg.isCandidate(task) {
 			plan.SkippedFiles++
 
 			continue
 		}
 
-		key := partitionBucketKey(t.File.SpecID(), internal.BorrowedDataFilePartition(t.File))
+		// Compaction rewrites whole files, not the scan's split or residual.
+		// Only selected files need a normalized task for the rewrite.
+		task.Start = 0
+		task.Length = size
+		task.Residual = nil
+
+		key := partitionBucketKey(task.File.SpecID(), internal.BorrowedDataFilePartition(task.File))
 		index, ok := partitionIndices[key]
 		if !ok {
 			index = len(partitionBuckets)
 			partitionIndices[key] = index
 			partitionBuckets = append(partitionBuckets, partitionBucket{key: key})
 		}
-		partitionBuckets[index].candidates = append(partitionBuckets[index].candidates, t)
+		partitionBuckets[index].candidates = append(partitionBuckets[index].candidates, task)
 	}
 
 	// Group candidates per partition by size. This only splits the work;
