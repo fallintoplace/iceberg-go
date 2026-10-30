@@ -160,32 +160,22 @@ func (s *IncrementalAppendScan) PlanFiles(ctx context.Context) ([]FileScanTask, 
 	// An inherited manifest can occur in every later snapshot's manifest list.
 	// Read each manifest path once, just as the Java incremental append scan
 	// collects the selected manifests into a set before opening them.
-	manifestsByPath := make(map[string]iceberg.ManifestFile)
 	manifestFS := sharedSnapshotManifestFSF(s.scan.ioF)
-	for _, snapshot := range snapshots {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		manifestSet, err := planningScan.manifestSetWithFSF(ctx, snapshot, manifestFS)
-		if err != nil {
-			return nil, err
-		}
-		for _, manifest := range manifestSet.borrowDataManifests() {
-			if _, ok := appendSnapshots[manifest.SnapshotID()]; !ok {
-				continue
+	manifestList, err := collectIncrementalScanManifests(ctx, snapshots,
+		planningScan.manifestCache,
+		func(readCtx context.Context, snapshot Snapshot) (snapshotManifestSet, error) {
+			return planningScan.manifestSetWithFSF(readCtx, snapshot, manifestFS)
+		},
+		func(manifest iceberg.ManifestFile) (bool, error) {
+			if manifest.ManifestContent() != iceberg.ManifestContentData {
+				return false, nil
 			}
-			manifestsByPath[manifest.FilePath()] = manifest
-		}
-	}
+			_, selected := appendSnapshots[manifest.SnapshotID()]
 
-	paths := make([]string, 0, len(manifestsByPath))
-	for path := range manifestsByPath {
-		paths = append(paths, path)
-	}
-	slices.Sort(paths)
-	manifestList := make([]iceberg.ManifestFile, 0, len(paths))
-	for _, path := range paths {
-		manifestList = append(manifestList, manifestsByPath[path])
+			return selected, nil
+		})
+	if err != nil {
+		return nil, err
 	}
 
 	// Use one projection cache for manifest-summary and data-file pruning.
