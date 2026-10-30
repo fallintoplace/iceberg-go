@@ -28,6 +28,7 @@ import (
 	sqlcat "github.com/apache/iceberg-go/catalog/sql"
 	iceio "github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
+	"github.com/apache/iceberg-go/view"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/driver/sqliteshim"
@@ -87,4 +88,47 @@ func TestSQLCatalogIORegistriesAreIsolated(t *testing.T) {
 		_, err = iceio.LoadFS(t.Context(), nil, created.MetadataLocation())
 		require.ErrorIs(t, err, iceio.ErrIOSchemeNotFound)
 	}
+}
+
+func TestSQLViewUsesCatalogIOPropertiesWithIsolatedRegistry(t *testing.T) {
+	const scheme = "sql-view-private-registry"
+	registry := &iceio.Registry{}
+	fs := iceio.NewMemFS()
+	var seen map[string]string
+	require.NoError(t, registry.Register(scheme, func(_ context.Context, _ *url.URL, props map[string]string) (iceio.IO, error) {
+		seen = props
+		return fs, nil
+	}))
+
+	db, err := sql.Open(sqliteshim.ShimName, filepath.Join(t.TempDir(), "views.db"))
+	require.NoError(t, err)
+	defer db.Close()
+
+	cat, err := sqlcat.NewCatalogWithOptions("isolated", db, sqlcat.SQLite,
+		iceberg.Properties{
+			"warehouse": scheme + "://bucket/warehouse",
+			"storage-secret": "catalog-only",
+			sqlcat.SchemaVersionKey: sqlcat.SchemaVersionV1,
+		},
+		sqlcat.WithIORegistry(registry),
+	)
+	require.NoError(t, err)
+	defer cat.Close()
+
+	ident := []string{"db", "orders_view"}
+	require.NoError(t, cat.CreateNamespace(t.Context(), []string{"db"}, nil))
+	schema := iceberg.NewSchema(1, iceberg.NestedField{
+		ID: 1, Name: "id", Type: iceberg.PrimitiveTypes.Int32, Required: true,
+	})
+	err = cat.CreateView(t.Context(), ident, schema, view.Representation{
+		SQL: "SELECT 1", Dialect: "spark",
+	}, iceberg.Properties{"view-prop": "persisted"})
+	require.NoError(t, err)
+	require.Equal(t, "catalog-only", seen["storage-secret"])
+
+	loaded, err := cat.LoadView(t.Context(), ident)
+	require.NoError(t, err)
+	require.Equal(t, "persisted", loaded.Properties()["view-prop"])
+	require.NotContains(t, loaded.Properties(), "storage-secret")
+	require.NoError(t, cat.DropView(t.Context(), ident))
 }
