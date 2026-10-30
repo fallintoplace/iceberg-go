@@ -131,6 +131,10 @@ func (b *Bin[T]) Add(item T, weight int64) {
 }
 
 func PackingIterator[T any](itr iter.Seq[T], targetWeight int64, lookback int, weightFunc func(T) int64, largestBinFirst bool) iter.Seq[[]T] {
+	if largestBinFirst && shouldUseIndexedLargestPacking(lookback, targetWeight) {
+		return indexedLargestPackingIterator(itr, targetWeight, lookback, weightFunc)
+	}
+
 	bins := make([]Bin[T], 0)
 	findBin := func(weight int64) *Bin[T] {
 		for i := range bins {
