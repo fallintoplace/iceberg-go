@@ -379,6 +379,30 @@ func explicitReferencedDataFile(df iceberg.DataFile) string {
 	return ""
 }
 
+// liveDeleteRefMatch keeps the first live entry and its count. The count
+// preserves duplicate-entry errors when multiple DVs reference one data file.
+type liveDeleteRefMatch struct {
+	file  iceberg.DataFile
+	count int
+}
+
+// indexLiveDeleteRefs indexes entries from one Puffin path. It is built once
+// only when multiple removals target that path.
+func indexLiveDeleteRefs(candidates []iceberg.DataFile) map[string]liveDeleteRefMatch {
+	refs := make(map[string]liveDeleteRefMatch, len(candidates))
+	for _, candidate := range candidates {
+		ref := explicitReferencedDataFile(candidate)
+		match := refs[ref]
+		if match.count == 0 {
+			match.file = candidate
+		}
+		match.count++
+		refs[ref] = match
+	}
+
+	return refs
+}
+
 // validateRemovedDeletes enforces the DV-supersession contract against
 // the RESOLVED live entries returned by resolveRemovedDeletes. The
 // caller's copies are deliberately not consulted: a stale or forged
@@ -540,12 +564,14 @@ func (rd *RowDelta) resolveRemovedDeletes(fs iceio.IO, meta *MetadataBuilder) (r
 		return nil, errors.New("cannot remove delete files from a table without an existing snapshot")
 	}
 
-	want := make(map[string]struct{}, len(rd.removedDels))
+	// Count removals per path. A single removal keeps the allocation-free
+	// scan, while repeated removals can share one reference index.
+	want := make(map[string]int, len(rd.removedDels))
 	for _, f := range rd.removedDels {
-		want[f.FilePath()] = struct{}{}
+		want[f.FilePath()]++
 	}
 
-	liveByPath := make(map[string][]iceberg.DataFile, len(rd.removedDels))
+	liveByPath := make(map[string][]iceberg.DataFile, len(want))
 	for entry, err := range snap.entries(fs, iceberg.ManifestContentDeletes, true) {
 		if err != nil {
 			return nil, err
@@ -559,6 +585,7 @@ func (rd *RowDelta) resolveRemovedDeletes(fs iceio.IO, meta *MetadataBuilder) (r
 	seenKeys := make(map[pathRefKey]struct{}, len(rd.removedDels))
 	seenRefs := make(map[string]string, len(rd.removedDels)) // live ref → live path
 	resolved = make([]iceberg.DataFile, len(rd.removedDels))
+	var indexedRefs map[string]map[string]liveDeleteRefMatch
 	for i, f := range rd.removedDels {
 		candidates := liveByPath[f.FilePath()]
 
@@ -575,13 +602,27 @@ func (rd *RowDelta) resolveRemovedDeletes(fs iceio.IO, meta *MetadataBuilder) (r
 					len(candidates), f.FilePath())
 			}
 			matches := 0
-			for _, c := range candidates {
-				if explicitReferencedDataFile(c) == ref {
-					if live == nil {
-						live = c
+			if want[f.FilePath()] == 1 {
+				// One removal pays for one scan, not a temporary map.
+				for _, c := range candidates {
+					if explicitReferencedDataFile(c) == ref {
+						if live == nil {
+							live = c
+						}
+						matches++
 					}
-					matches++
 				}
+			} else {
+				if indexedRefs == nil {
+					indexedRefs = make(map[string]map[string]liveDeleteRefMatch, len(want))
+				}
+				index := indexedRefs[f.FilePath()]
+				if index == nil {
+					index = indexLiveDeleteRefs(candidates)
+					indexedRefs[f.FilePath()] = index
+				}
+				match := index[ref]
+				live, matches = match.file, match.count
 			}
 			switch {
 			case matches == 0:
