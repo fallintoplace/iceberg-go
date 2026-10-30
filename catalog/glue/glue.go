@@ -202,10 +202,10 @@ func NewCatalog(opts ...Option) (*Catalog, error) {
 	}
 
 	cat := &Catalog{
-		glueSvc:   glue.NewFromConfig(glueOps.awsConfig),
-		catalogId: catalogId,
-		awsCfg:    &glueOps.awsConfig,
-		props:     iceberg.Properties(glueOps.awsProperties),
+		glueSvc:    glue.NewFromConfig(glueOps.awsConfig),
+		catalogId:  catalogId,
+		awsCfg:     &glueOps.awsConfig,
+		props:      iceberg.Properties(glueOps.awsProperties),
 		ioRegistry: glueOps.ioRegistry,
 	}
 
