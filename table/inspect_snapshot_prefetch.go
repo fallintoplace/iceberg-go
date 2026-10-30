@@ -69,9 +69,6 @@ func streamSnapshotManifests(
 // streamSnapshotManifestSets reads snapshot lists with bounded prefetch while
 // leaving duplicate manifests intact. Incremental planners need the last
 // descriptor for a path, whereas Inspect yields each path only once.
-// streamSnapshotManifests loads historical manifest lists concurrently while
-// yielding them in snapshot order. Only a small window of lists can be held
-// by in-flight reads, even for tables with many snapshots.
 func streamSnapshotManifestSets(
 	ctx context.Context,
 	snapshots []Snapshot,
