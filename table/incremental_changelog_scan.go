@@ -181,43 +181,26 @@ func (s *IncrementalChangelogScan) PlanFiles(ctx context.Context) ([]ChangelogSc
 	if s.scan.ioF == nil {
 		return nil, fmt.Errorf("%w: table file IO is not configured", ErrInvalidOperation)
 	}
-	fs, err := s.scan.ioF(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	manifestsByPath := make(map[string]iceberg.ManifestFile)
-	for _, snapshot := range snapshots {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		manifests, err := snapshot.Manifests(fs)
-		if err != nil {
-			return nil, err
-		}
-		for _, manifest := range manifests {
+	manifestFS := sharedSnapshotManifestFSF(s.scan.ioF)
+	manifestList, err := collectIncrementalScanManifests(ctx, snapshots,
+		planningScan.manifestCache,
+		func(readCtx context.Context, snapshot Snapshot) (snapshotManifestSet, error) {
+			return planningScan.manifestSetWithFSF(readCtx, snapshot, manifestFS)
+		},
+		func(manifest iceberg.ManifestFile) (bool, error) {
 			if manifest.ManifestContent() == iceberg.ManifestContentDeletes {
-				return nil, fmt.Errorf("%w: incremental changelog scan range references a delete manifest originating in snapshot %d",
+				return false, fmt.Errorf("%w: incremental changelog scan range references a delete manifest originating in snapshot %d",
 					ErrInvalidOperation, manifest.SnapshotID())
 			}
 			if manifest.ManifestContent() != iceberg.ManifestContentData {
-				continue
+				return false, nil
 			}
-			if _, ok := changelogSnapshotIDs[manifest.SnapshotID()]; !ok {
-				continue
-			}
-			manifestsByPath[manifest.FilePath()] = manifest
-		}
-	}
+			_, selected := changelogSnapshotIDs[manifest.SnapshotID()]
 
-	paths := make([]string, 0, len(manifestsByPath))
-	for path := range manifestsByPath {
-		paths = append(paths, path)
-	}
-	slices.Sort(paths)
-	manifestList := make([]iceberg.ManifestFile, 0, len(paths))
-	for _, path := range paths {
-		manifestList = append(manifestList, manifestsByPath[path])
+			return selected, nil
+		})
+	if err != nil {
+		return nil, err
 	}
 
 	// Changelog metrics intentionally count only manifests that contain added or
