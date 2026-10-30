@@ -32,8 +32,8 @@ type inspectSnapshotManifestRead struct {
 }
 
 // streamSnapshotManifests loads historical manifest lists concurrently while
-// yielding them in snapshot order. Only a small window of lists can be held
-// by in-flight reads, even for tables with many snapshots.
+// yielding unique manifests in snapshot order. Only a small window of lists
+// can be held by in-flight reads, even for tables with many snapshots.
 func streamSnapshotManifests(
 	ctx context.Context,
 	snapshots []Snapshot,
@@ -44,12 +44,49 @@ func streamSnapshotManifests(
 	if len(snapshots) == 0 {
 		return
 	}
+
+	seen := make(map[string]struct{})
+	streamSnapshotManifestSets(ctx, snapshots, cached, load,
+		func(set snapshotManifestSet, err error) bool {
+			if err != nil {
+				return yield(nil, err)
+			}
+			for _, manifest := range set.borrowAllManifests() {
+				path := manifest.FilePath()
+				if _, ok := seen[path]; ok {
+					continue
+				}
+				seen[path] = struct{}{}
+				if !yield(manifest, nil) {
+					return false
+				}
+			}
+
+			return true
+		})
+}
+
+// streamSnapshotManifestSets reads snapshot lists with bounded prefetch while
+// leaving duplicate manifests intact. Incremental planners need the last
+// descriptor for a path, whereas Inspect yields each path only once.
+// streamSnapshotManifests loads historical manifest lists concurrently while
+// yielding them in snapshot order. Only a small window of lists can be held
+// by in-flight reads, even for tables with many snapshots.
+func streamSnapshotManifestSets(
+	ctx context.Context,
+	snapshots []Snapshot,
+	cached func(Snapshot) (snapshotManifestSet, bool),
+	load func(context.Context, Snapshot) (snapshotManifestSet, error),
+	yield func(snapshotManifestSet, error) bool,
+) {
+	if len(snapshots) == 0 {
+		return
+	}
 	if err := ctx.Err(); err != nil {
-		yield(nil, err)
+		yield(snapshotManifestSet{}, err)
 
 		return
 	}
-	seen := make(map[string]struct{})
 	if len(snapshots) == 1 {
 		set, ok := snapshotManifestSet{}, false
 		if cached != nil {
@@ -59,21 +96,12 @@ func streamSnapshotManifests(
 			var err error
 			set, err = load(ctx, snapshots[0])
 			if err != nil {
-				yield(nil, fmt.Errorf("read snapshot %d manifests: %w", snapshots[0].SnapshotID, err))
+				yield(snapshotManifestSet{}, fmt.Errorf("read snapshot %d manifests: %w", snapshots[0].SnapshotID, err))
 
 				return
 			}
 		}
-		for _, manifest := range set.borrowAllManifests() {
-			path := manifest.FilePath()
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			if !yield(manifest, nil) {
-				return
-			}
-		}
+		_ = yield(set, nil)
 
 		return
 	}
@@ -98,19 +126,12 @@ func streamSnapshotManifests(
 
 			for i := range count {
 				if err := ctx.Err(); err != nil {
-					yield(nil, err)
+					yield(snapshotManifestSet{}, err)
 
 					return
 				}
-				for _, manifest := range sets[i].borrowAllManifests() {
-					path := manifest.FilePath()
-					if _, ok := seen[path]; ok {
-						continue
-					}
-					seen[path] = struct{}{}
-					if !yield(manifest, nil) {
-						return
-					}
+				if !yield(sets[i], nil) {
+					return
 				}
 			}
 			start += count
@@ -170,7 +191,7 @@ func streamSnapshotManifests(
 
 	for i, snapshot := range snapshots {
 		if err := readCtx.Err(); err != nil {
-			yield(nil, err)
+			yield(snapshotManifestSet{}, err)
 
 			return
 		}
@@ -183,7 +204,7 @@ func streamSnapshotManifests(
 		} else {
 			select {
 			case <-readCtx.Done():
-				yield(nil, readCtx.Err())
+				yield(snapshotManifestSet{}, readCtx.Err())
 
 				return
 			case result = <-results[slot]:
@@ -191,7 +212,7 @@ func streamSnapshotManifests(
 		}
 
 		if result.err != nil {
-			yield(nil, fmt.Errorf("read snapshot %d manifests: %w", snapshot.SnapshotID, result.err))
+			yield(snapshotManifestSet{}, fmt.Errorf("read snapshot %d manifests: %w", snapshot.SnapshotID, result.err))
 
 			return
 		}
@@ -211,15 +232,8 @@ func streamSnapshotManifests(
 			}
 		}
 
-		for _, manifest := range result.set.borrowAllManifests() {
-			path := manifest.FilePath()
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			if !yield(manifest, nil) {
-				return
-			}
+		if !yield(result.set, nil) {
+			return
 		}
 	}
 }
