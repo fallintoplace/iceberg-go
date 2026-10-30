@@ -452,6 +452,7 @@ func collectCompactionPartitions(
 		parts  []compactionPartition
 		rows   rowComparator
 		plan   *partitionExtractionPlan
+		index  partitionRecordIndex
 		takeFn = partitionBatchByKey(ctx)
 	)
 
@@ -505,12 +506,9 @@ func collectCompactionPartitions(
 
 				return parts, nil, err
 			}
-			idx := slices.IndexFunc(parts, func(p compactionPartition) bool {
-				return partitionRecordsEqual(p.rec, info.partitionRec)
-			})
-			if idx < 0 {
+			idx := index.getOrInsert(info.partitionRec, len(parts))
+			if idx == len(parts) {
 				parts = append(parts, compactionPartition{rec: info.partitionRec})
-				idx = len(parts) - 1
 			}
 			parts[idx].batches = append(parts[idx].batches, sub)
 		}
@@ -697,8 +695,9 @@ func presortedPartitions(meta Metadata, spec iceberg.PartitionSpec, order SortOr
 	}
 
 	var (
-		keys  []partitionRecord
-		parts [][]FileScanTask
+		fields = spec.Fields()
+		index  partitionRecordIndex
+		parts  [][]FileScanTask
 	)
 	for _, task := range tasks {
 		sortOrderID := task.File.SortOrderID()
@@ -707,15 +706,17 @@ func presortedPartitions(meta Metadata, spec iceberg.PartitionSpec, order SortOr
 		}
 
 		values := task.File.Partition()
-		key := make(partitionRecord, 0, spec.NumFields())
-		for _, field := range spec.Fields() {
+		var inlineKey [4]any
+		key := inlineKey[:0]
+		if len(fields) > len(inlineKey) {
+			key = make(partitionRecord, 0, len(fields))
+		}
+		for _, field := range fields {
 			key = append(key, values[field.FieldID])
 		}
-		idx := slices.IndexFunc(keys, func(k partitionRecord) bool { return partitionRecordsEqual(k, key) })
-		if idx < 0 {
-			keys = append(keys, key)
+		idx := index.getOrInsert(key, len(parts))
+		if idx == len(parts) {
 			parts = append(parts, nil)
-			idx = len(parts) - 1
 		}
 		parts[idx] = append(parts[idx], task)
 		if len(parts[idx]) > maxStreams {
