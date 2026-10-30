@@ -392,7 +392,6 @@ func claimableSortOrderID(meta Metadata, order SortOrder) int {
 }
 
 type compactionPartition struct {
-	rec     partitionRecord
 	batches []arrow.RecordBatch
 }
 
@@ -508,7 +507,7 @@ func collectCompactionPartitions(
 			}
 			idx := index.getOrInsert(info.partitionRec, len(parts))
 			if idx == len(parts) {
-				parts = append(parts, compactionPartition{rec: info.partitionRec})
+				parts = append(parts, compactionPartition{})
 			}
 			parts[idx].batches = append(parts[idx].batches, sub)
 		}
