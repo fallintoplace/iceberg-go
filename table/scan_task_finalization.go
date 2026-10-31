@@ -150,6 +150,7 @@ func (scan *Scan) finalizeTaskRange(
 	var residualEvaluator *partitionResidualEvaluator
 	var cachedSpecID int
 	var hasCachedSpec bool
+	var residualCache partitionResidualCache[iceberg.BooleanExpression]
 	for index := start; index < end; index++ {
 		task := &plannedTasks[index]
 		if residualEvaluators != nil {
@@ -168,13 +169,28 @@ func (scan *Scan) finalizeTaskRange(
 				cachedSpecID, hasCachedSpec = specID, true
 			}
 			if residualEvaluator != nil {
-				var simplified bool
-				task.Residual, simplified, err = residualEvaluator.residual(dataFilePartition(task.File))
-				if err != nil {
-					result.err = fmt.Errorf(
-						"evaluate partition residual for %s: %w", task.File.FilePath(), err)
+				partition := dataFilePartition(task.File)
+				var key partitionResidualCacheKey
+				var cacheable, simplified, hit bool
+				if !residualCache.disabled {
+					key, cacheable = partitionResidualKey(specID, partition)
+					if cacheable {
+						if cached, ok := residualCache.lookup(key); ok {
+							task.Residual, simplified, hit = cached.value, cached.changed, true
+						}
+					}
+				}
+				if !hit {
+					task.Residual, simplified, err = residualEvaluator.residual(partition)
+					if err != nil {
+						result.err = fmt.Errorf(
+							"evaluate partition residual for %s: %w", task.File.FilePath(), err)
 
-					return result
+						return result
+					}
+					if cacheable {
+						residualCache.remember(key, task.Residual, simplified)
+					}
 				}
 				if !simplified {
 					task.Residual = nil

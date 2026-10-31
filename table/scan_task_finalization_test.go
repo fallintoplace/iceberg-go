@@ -643,3 +643,53 @@ func benchmarkFinalizationOffsets(count int, spacing int64) []int64 {
 
 	return offsets
 }
+
+func TestFinalizePlannedTasksCachedPartitionsMatchSerialAcrossEvictions(t *testing.T) {
+	setFinalizationTestProcs(t, 4)
+	schema := simpleSchema()
+	spec := partitionedSpec()
+	meta, err := NewMetadata(schema, &spec, UnsortedSortOrder, "mem://cache-test", nil)
+	require.NoError(t, err)
+
+	// Repeated runs, interleaved partition values, and a large set of unique
+	// partitions exercise both the last-key shortcut and bounded map eviction.
+	tasks := make([]FileScanTask, 2048)
+	for i := range tasks {
+		var value int32
+		switch (i / 512) % 4 {
+		case 0:
+			value = 7 + int32(i%2)
+		case 1:
+			value = int32(i)
+		case 2:
+			value = 4 + int32(i%17)
+		default:
+			value = 7 + int32((i/64)%2)
+		}
+		file := finalizationTestDataFile(t, spec,
+			fmt.Sprintf("mem://cache-test/data-%d.parquet", i),
+			map[int]any{1000: value}, 100, nil)
+		tasks[i] = FileScanTask{File: file, Length: file.FileSizeBytes()}
+	}
+
+	scan := &Scan{
+		metadata: meta,
+		rowFilter: iceberg.EqualTo(iceberg.Reference("id"), int32(7)),
+		caseSensitive: true,
+	}
+	want, wantMetrics, err := serialFinalizationReference(
+		scan, append([]FileScanTask(nil), tasks...), schema)
+	require.NoError(t, err)
+
+	for _, concurrency := range []int{1, 8} {
+		t.Run(fmt.Sprintf("concurrency=%d", concurrency), func(t *testing.T) {
+			scan.concurrency = concurrency
+			var metrics scanMetricsAccumulator
+			got, err := scan.finalizePlannedTasks(
+				append([]FileScanTask(nil), tasks...), schema, &metrics)
+			require.NoError(t, err)
+			assert.Equal(t, want, got)
+			assert.Equal(t, wantMetrics, metrics)
+		})
+	}
+}
