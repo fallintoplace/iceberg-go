@@ -924,7 +924,7 @@ func TestGetReferencedFiles_ManySnapshotsShareManifest(t *testing.T) {
 	require.NoError(t, err)
 
 	tbl := New(Identifier{"ns", "tbl"}, meta, "metadata.json", testFSF(tio), nil)
-	refs, err := tbl.getReferencedFiles(context.Background(), tio, 4, true)
+	refs, err := tbl.getReferencedFiles(context.Background(), &synchronizedOpenIO{IO: tio}, 4, true)
 	require.NoError(t, err)
 
 	assert.Contains(t, refs, dataPath)
