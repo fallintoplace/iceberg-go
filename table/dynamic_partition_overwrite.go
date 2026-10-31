@@ -19,9 +19,6 @@ package table
 import (
 	"context"
 	"fmt"
-	"math"
-	"reflect"
-	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -29,84 +26,21 @@ import (
 	"github.com/google/uuid"
 )
 
-// dynamicPartitionMatcher indexes the complete partition tuples touched by a
-// write. Fingerprints only narrow the candidates; comparing actual values is
-// essential because a human-readable fingerprint is not a unique encoding.
-type dynamicPartitionMatcher struct {
-	fieldIDs []int
-	byKey    map[string][]map[int]any
-}
-
-func newDynamicPartitionMatcher(spec *iceberg.PartitionSpec, files []iceberg.DataFile) *dynamicPartitionMatcher {
-	m := &dynamicPartitionMatcher{
-		fieldIDs: make([]int, 0, spec.NumFields()),
-		byKey:    make(map[string][]map[int]any, len(files)),
-	}
-	for _, field := range spec.Fields() {
-		m.fieldIDs = append(m.fieldIDs, field.FieldID)
-	}
-
+// dynamicPartitionKeys normalizes all partition values before comparing them.
+// A manifest decoder may represent the same logical day as an int32 while the
+// writer uses iceberg.Date. The shared canonical encoder handles both forms,
+// decimals, bytes, UUIDs, and nulls without lossy string formatting.
+func dynamicPartitionKeys(files []iceberg.DataFile) (map[string]struct{}, error) {
+	keys := make(map[string]struct{}, len(files))
 	for _, file := range files {
-		partition := dataFilePartition(file)
-		key := m.key(partition)
-		if !m.containsKey(key, partition) {
-			m.byKey[key] = append(m.byKey[key], partition)
+		key, err := canonicalPartitionKey(file.SpecID(), dataFilePartition(file))
+		if err != nil {
+			return nil, fmt.Errorf("dynamic partition overwrite file %q: %w", file.FilePath(), err)
 		}
+		keys[key] = struct{}{}
 	}
 
-	return m
-}
-
-func (m *dynamicPartitionMatcher) key(partition map[int]any) string {
-	var b strings.Builder
-	for _, id := range m.fieldIDs {
-		value := partition[id]
-		// Include the field ID and Go value type, and verify equality on
-		// matches. This is also safe for binary, decimal and null values.
-		fmt.Fprintf(&b, "%d:%T:%#v;", id, value, value)
-	}
-
-	return b.String()
-}
-
-func (m *dynamicPartitionMatcher) containsKey(key string, partition map[int]any) bool {
-	for _, candidate := range m.byKey[key] {
-		equal := true
-		for _, id := range m.fieldIDs {
-			if !sameDynamicPartitionValue(candidate[id], partition[id]) {
-				equal = false
-
-				break
-			}
-		}
-		if equal {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (m *dynamicPartitionMatcher) contains(partition map[int]any) bool {
-	return m.containsKey(m.key(partition), partition)
-}
-
-// Iceberg groups NaNs into one partition value even though NaN != NaN in Go.
-func sameDynamicPartitionValue(a, b any) bool {
-	switch x := a.(type) {
-	case float32:
-		y, ok := b.(float32)
-		if ok && math.IsNaN(float64(x)) && math.IsNaN(float64(y)) {
-			return true
-		}
-	case float64:
-		y, ok := b.(float64)
-		if ok && math.IsNaN(x) && math.IsNaN(y) {
-			return true
-		}
-	}
-
-	return reflect.DeepEqual(a, b)
+	return keys, nil
 }
 
 func (t *Transaction) dynamicOverwriteSpec() (*iceberg.PartitionSpec, error) {
@@ -180,8 +114,13 @@ func (t *Transaction) DynamicPartitionOverwriteDataFiles(
 		return err
 	}
 
+	keys, err := dynamicPartitionKeys(filesToAdd)
+	if err != nil {
+		return err
+	}
+
 	var toDelete []iceberg.DataFile
-	matcher := newDynamicPartitionMatcher(spec, filesToAdd)
+	validationPlan := newPartitionValidationPlan(spec)
 	if snapshot := t.planningSnapshot(t.meta); snapshot != nil {
 		for df, err := range snapshot.dataFiles(fs, nil) {
 			if err != nil {
@@ -197,7 +136,15 @@ func (t *Transaction) DynamicPartitionOverwriteDataFiles(
 				return fmt.Errorf("%w: dynamic partition overwrite cannot replace data spanning partition spec %d (current %d)",
 					ErrInvalidOperation, df.SpecID(), spec.ID())
 			}
-			if matcher.contains(dataFilePartition(df)) {
+			if err := validationPlan.validate(df); err != nil {
+				return fmt.Errorf("%w: invalid live partition in file %q: %w",
+					ErrInvalidOperation, df.FilePath(), err)
+			}
+			key, err := canonicalPartitionKey(df.SpecID(), dataFilePartition(df))
+			if err != nil {
+				return fmt.Errorf("dynamic partition overwrite live file %q: %w", df.FilePath(), err)
+			}
+			if _, touched := keys[key]; touched {
 				toDelete = append(toDelete, df)
 			}
 		}
