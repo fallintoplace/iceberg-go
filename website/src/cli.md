@@ -285,6 +285,22 @@ iceberg branch create \
   my_db.events audit-2026-q2
 ```
 
+### `branch fast-forward`
+
+Advance a branch to the head of another branch or tag, without rewriting any data.
+The destination must already be an ancestor of the source. If the destination
+branch does not exist, it is created; the source ref must exist. Destination
+retention settings are preserved. The commit pins both references to prevent
+overwriting concurrent ref changes.
+
+```shell
+iceberg branch fast-forward my_db.events staging experiment --yes
+iceberg branch fast-forward my_db.events main audit-tag --yes
+```
+
+The `--yes` flag skips confirmation. A no-op fast-forward exits successfully
+without committing new metadata.
+
 ### `tag create`
 
 ```shell

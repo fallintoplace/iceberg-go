@@ -37,6 +37,8 @@ func runBranch(ctx context.Context, output Output, cat catalog.Catalog, cmd *Bra
 		runBranchCreate(ctx, output, cat, cmd.Create)
 	case cmd.Delete != nil:
 		runBranchDelete(ctx, output, cat, cmd.Delete)
+	case cmd.FastForward != nil:
+		runBranchFastForward(ctx, output, cat, cmd.FastForward)
 	}
 }
 

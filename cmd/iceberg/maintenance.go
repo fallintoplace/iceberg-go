@@ -97,9 +97,17 @@ type BranchDeleteCmd struct {
 	Yes        bool   `arg:"--yes" help:"skip confirmation prompt"`
 }
 
+type BranchFastForwardCmd struct {
+	TableID    string `arg:"positional,required" help:"full path to a table"`
+	BranchName string `arg:"positional,required" help:"branch to advance"`
+	To         string `arg:"positional,required" help:"source branch or tag"`
+	Yes        bool   `arg:"--yes" help:"skip confirmation prompt"`
+}
+
 type BranchCmd struct {
-	Create *BranchCreateCmd `arg:"subcommand:create" help:"create a branch"`
-	Delete *BranchDeleteCmd `arg:"subcommand:delete" help:"delete a branch"`
+	Create      *BranchCreateCmd      `arg:"subcommand:create" help:"create a branch"`
+	Delete      *BranchDeleteCmd      `arg:"subcommand:delete" help:"delete a branch"`
+	FastForward *BranchFastForwardCmd `arg:"subcommand:fast-forward" help:"advance a branch to a descendant ref"`
 }
 
 type TagCreateCmd struct {
