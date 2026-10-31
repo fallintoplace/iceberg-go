@@ -18,68 +18,67 @@
 package main
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    "github.com/apache/iceberg-go/catalog"
+	"github.com/apache/iceberg-go/catalog"
 )
 
 // runBranchFastForward stages and validates an ancestry-preserving ref move.
 // The explicit catalog commit supports the CLI's existing catalog injection
 // and preserves the transaction's guards on both source and destination refs.
 func runBranchFastForward(ctx context.Context, output Output, cat catalog.Catalog, cmd *BranchFastForwardCmd) {
-    if err := validateRefName(cmd.BranchName); err != nil {
-        output.Error(fmt.Errorf("invalid branch name: %w", err))
-        osExit(1)
-        return
-    }
-    if err := validateRefName(cmd.To); err != nil {
-        output.Error(fmt.Errorf("invalid source ref name: %w", err))
-        osExit(1)
-        return
-    }
+	if err := validateRefName(cmd.BranchName); err != nil {
+		output.Error(fmt.Errorf("invalid branch name: %w", err))
+		osExit(1)
+		return
+	}
+	if err := validateRefName(cmd.To); err != nil {
+		output.Error(fmt.Errorf("invalid source ref name: %w", err))
+		osExit(1)
+		return
+	}
 
-    tbl := loadTable(ctx, output, cat, cmd.TableID)
-    tx, err := tbl.NewTransactionOnBranch(cmd.BranchName)
-    if err == nil {
-        err = tx.FastForwardBranch(cmd.BranchName, cmd.To)
-    }
-    if err != nil {
-        output.Error(err)
-        osExit(1)
-        return
-    }
+	tbl := loadTable(ctx, output, cat, cmd.TableID)
+	tx, err := tbl.NewTransactionOnBranch(cmd.BranchName)
+	if err == nil {
+		err = tx.FastForwardBranch(cmd.BranchName, cmd.To)
+	}
+	if err != nil {
+		output.Error(err)
+		osExit(1)
+		return
+	}
 
-    commit, err := tx.TableCommit()
-    if err != nil {
-        output.Error(err)
-        osExit(1)
-        return
-    }
+	commit, err := tx.TableCommit()
+	if err != nil {
+		output.Error(err)
+		osExit(1)
+		return
+	}
 
-    source, _ := findSnapshotRef(tbl.Metadata(), cmd.To)
-    if len(commit.Updates) == 0 {
-        output.Text(fmt.Sprintf("Branch %q is already at snapshot %d.", cmd.BranchName, source.SnapshotID))
-        return
-    }
+	source, _ := findSnapshotRef(tbl.Metadata(), cmd.To)
+	if len(commit.Updates) == 0 {
+		output.Text(fmt.Sprintf("Branch %q is already at snapshot %d.", cmd.BranchName, source.SnapshotID))
+		return
+	}
 
-    if err := confirmAction(
-        fmt.Sprintf("Fast-forward branch %q on %s to ref %q at snapshot %d?",
-            cmd.BranchName, tableIDString(tbl), cmd.To, source.SnapshotID),
-        cmd.Yes,
-    ); err != nil {
-        output.Error(err)
-        osExit(1)
-        return
-    }
+	if err := confirmAction(
+		fmt.Sprintf("Fast-forward branch %q on %s to ref %q at snapshot %d?",
+			cmd.BranchName, tableIDString(tbl), cmd.To, source.SnapshotID),
+		cmd.Yes,
+	); err != nil {
+		output.Error(err)
+		osExit(1)
+		return
+	}
 
-    if _, _, err := cat.CommitTable(ctx, tbl.Identifier(), commit.Requirements, commit.Updates); err != nil {
-        output.Error(fmt.Errorf("failed to fast-forward branch %q: %w", cmd.BranchName, err))
-        osExit(1)
-        return
-    }
+	if _, _, err := cat.CommitTable(ctx, tbl.Identifier(), commit.Requirements, commit.Updates); err != nil {
+		output.Error(fmt.Errorf("failed to fast-forward branch %q: %w", cmd.BranchName, err))
+		osExit(1)
+		return
+	}
 
-    output.Text(fmt.Sprintf("Fast-forwarded branch %q on %s to snapshot %d.",
-        cmd.BranchName, tableIDString(tbl), source.SnapshotID))
+	output.Text(fmt.Sprintf("Fast-forwarded branch %q on %s to snapshot %d.",
+		cmd.BranchName, tableIDString(tbl), source.SnapshotID))
 }
-
