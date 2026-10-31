@@ -325,7 +325,23 @@ func TestTransactionRefChangesFailOnConcurrentMutation(t *testing.T) {
 
 	t.Run("target advance fences fast-forward", func(t *testing.T) {
 		base := refManagementMetadata(t)
-		peer := graftSnapshotOnto(t, base, "staging", 400)
+		// Staging is at snapshot 100 while the table's global last
+		// sequence number is 3. A peer branch commit must allocate a
+		// sequence number above the TABLE's last sequence number.
+		builder, err := MetadataBuilderFromBase(base, "")
+		require.NoError(t, err)
+		parentID := int64(100)
+		require.NoError(t, builder.AddSnapshot(&Snapshot{
+			SnapshotID:       400,
+			ParentSnapshotID: &parentID,
+			SequenceNumber:   4,
+			TimestampMs:      base.LastUpdatedMillis() + 1,
+			Summary:          &Summary{Operation: OpAppend},
+		}))
+		require.NoError(t, builder.SetSnapshotRef("staging", 400, BranchRef,
+			WithMaxRefAgeMs(7000), WithMaxSnapshotAgeMs(9000), WithMinSnapshotsToKeep(2)))
+		peer, err := builder.Build()
+		require.NoError(t, err)
 		tbl, cat := newAssertRefTestTable(t, base, peer)
 		tx := tbl.NewTransaction()
 		require.NoError(t, tx.FastForwardBranch("staging", "audit"))
