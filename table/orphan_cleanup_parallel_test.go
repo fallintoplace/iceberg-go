@@ -27,8 +27,23 @@ import (
 	"time"
 
 	"github.com/apache/iceberg-go"
+	iceio "github.com/apache/iceberg-go/io"
 	"github.com/stretchr/testify/require"
 )
+
+// Some tracking test filesystems record Open calls in a plain map. Serialize
+// just Open for those fixtures while exercising concurrent manifest-list reads.
+type synchronizedOpenIO struct {
+	iceio.IO
+	mu sync.Mutex
+}
+
+func (s *synchronizedOpenIO) Open(name string) (iceio.File, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.IO.Open(name)
+}
 
 func orphanBenchmarkSnapshots(count int) []Snapshot {
 	snapshots := make([]Snapshot, count)
