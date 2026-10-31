@@ -112,9 +112,8 @@ func WithDeleteFunc(deleteFunc func(string) error) OrphanCleanupOption {
 	}
 }
 
-// WithMaxConcurrency sets the maximum number of goroutines for parallel deletion.
-// Defaults to a reasonable number based on the system. Only used when deleteFunc is nil or when
-// the FileIO doesn't support bulk operations.
+// WithMaxConcurrency bounds concurrent manifest reads and parallel deletion.
+// Defaults to a reasonable number based on the system.
 func WithMaxConcurrency(maxWorkers int) OrphanCleanupOption {
 	return func(cfg *orphanCleanupConfig) {
 		if maxWorkers > 0 {
@@ -324,42 +323,37 @@ func (t Table) getReferencedFiles(ctx context.Context, fs iceio.IO, maxConcurren
 		return nil, errors.New("fs cannot be nil when table has snapshots")
 	}
 
-	// Pass 1: Read manifest lists (lightweight) to collect unique manifests.
-	uniqueManifests := make(map[string]iceberg.ManifestFile)
-	for _, snapshot := range metadata.Snapshots() {
+	// Pass 1: Load snapshot manifests in parallel and deduplicate as they
+	// arrive, retaining only unique manifests instead of all snapshot lists.
+	snapshots := metadata.Snapshots()
+	for _, snapshot := range snapshots {
 		if snapshot.ManifestList != "" {
 			referenced[normalizeFilePath(snapshot.ManifestList)] = false
 		}
-
-		manifestFiles, err := snapshot.Manifests(fs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read manifests for snapshot %d: %w", snapshot.SnapshotID, err)
-		}
-
-		for _, manifest := range manifestFiles {
-			path := manifest.FilePath()
-			if _, ok := uniqueManifests[path]; !ok {
-				uniqueManifests[path] = manifest
-				referenced[normalizeFilePath(path)] = false
-			}
-		}
+	}
+	uniqueManifests, err := readUniqueSnapshotManifests(ctx, snapshots, maxConcurrency,
+		func(snapshot Snapshot) ([]iceberg.ManifestFile, error) {
+			return snapshot.Manifests(fs)
+		})
+	if err != nil {
+		return nil, err
+	}
+	for path := range uniqueManifests {
+		referenced[normalizeFilePath(path)] = false
 	}
 
 	if len(uniqueManifests) == 0 {
 		return referenced, nil
 	}
 
-	// Pass 2: Read entries from each unique manifest in parallel.
-	type refEntry struct {
-		path   string
-		isData bool
-	}
+	// Pass 2: Process each unique manifest once, flushing bounded batches
+	// instead of keeping its entire entry set in a temporary slice.
 	var mu sync.Mutex
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(max(min(maxConcurrency, len(uniqueManifests)), 1))
 	for _, m := range uniqueManifests {
 		g.Go(func() error {
-			var entries []refEntry
+			batch := newReferencePathBatch(referenced, &mu)
 			// discardDeleted=true: skip DELETED-status entries when
 			// computing the reachable file set. A DELETED entry is
 			// not live in this snapshot and should not pin the file
@@ -375,26 +369,13 @@ func (t Table) getReferencedFiles(ctx context.Context, fs iceio.IO, maxConcurren
 				}
 				// All files tracked within a manifest (data files, equality deletes, position deletes)
 				// are considered "data files" for the purposes of gc.enabled.
-				entries = append(entries, refEntry{
-					path:   normalizeFilePath(entry.DataFile().FilePath()),
-					isData: true,
-				})
+				batch.add(normalizeFilePath(entry.DataFile().FilePath()))
 				if ref := entry.DataFile().ReferencedDataFile(); ref != nil {
-					// This is a deletion vector entry referencing a data file.
-					// Its FilePath() is the deletion vector (.dv) file itself (added above).
-					// We must also mark the referenced data file as referenced.
-					entries = append(entries, refEntry{
-						path:   normalizeFilePath(*ref),
-						isData: true,
-					})
+					// Deletion vectors reference their associated data file.
+					batch.add(normalizeFilePath(*ref))
 				}
 			}
-
-			mu.Lock()
-			for _, e := range entries {
-				referenced[e.path] = e.isData
-			}
-			mu.Unlock()
+			batch.flush()
 
 			return nil
 		})
