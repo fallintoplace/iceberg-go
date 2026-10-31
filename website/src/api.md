@@ -339,6 +339,35 @@ newTbl, err = tbl.Overwrite(ctx, recordReader, nil,
 
 `OverwriteTable` is the `arrow.Table` variant.
 
+### Dynamic partition overwrite
+
+Replace only the partitions present in the incoming data. Unlike a filtered
+row-level overwrite, this removes **all existing data files** in those partitions
+while retaining files in other partitions.
+
+```go
+// Write Arrow record batches, replacing only partitions receiving new rows.
+newTbl, err := tbl.DynamicPartitionOverwrite(ctx, recordReader, nil)
+
+// In-memory Arrow tables work too.
+newTbl, err = tbl.DynamicPartitionOverwriteTable(ctx, arrowTbl, 1024, nil)
+
+// Or commit already-written Iceberg DataFile metadata through a transaction.
+txn := tbl.NewTransaction()
+err = txn.DynamicPartitionOverwriteDataFiles(ctx, newDataFiles, nil)
+if err == nil {
+    newTbl, err = txn.Commit(ctx)
+}
+```
+
+This supports Iceberg format v1/v2 and partitioned tables whose live data files
+all use the current partition spec. It rejects mixed-spec tables and format v3
+rather than risk an incomplete replacement. Empty input leaves the table
+untouched. The operation pins the branch head and default partition shape: if
+another writer commits or evolves the spec first, the commit fails instead of
+silently retaining a concurrent write in a replaced partition. Start a fresh
+transaction for each dynamic overwrite and retry from a reloaded table on conflict.
+
 ### Delete
 
 ```go
