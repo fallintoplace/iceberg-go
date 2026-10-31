@@ -876,23 +876,6 @@ type equalityDeleteSourceFieldInfo struct {
 	found bool
 }
 
-// eqDeletePartitionsToFilter converts equality-delete data files into an
-// OR-of-ANDs BooleanExpression in row (source) space, suitable for passing
-// to validateAddedDataFilesMatchingFilter.
-//
-// For each distinct (spec ID, partition) tuple it resolves each partition
-// field ID to the source schema field name via the file's partition spec, then
-// builds an EqualTo predicate using Reference(sourceFieldName). Multiple
-// fields within one partition are AND-ed; multiple partitions are OR-ed.
-//
-// The resulting expression is projected per-concurrent-manifest's spec ID
-// inside validateAddedDataFilesMatchingFilter (via buildPartitionProjection),
-// ensuring correct conflict detection even after partition-spec evolution.
-//
-// An empty partition tuple (unpartitioned delete) returns AlwaysTrue so the
-// caller falls back to the conservative full-table scan. Callers should
-// normally guard against calling this function for unpartitioned tables (see
-// RowDelta.validate).
 // equalityDeleteConflictTerm holds either a regular row predicate or the
 // first occurrence of a group of single-field identity partitions.
 // Repeated values for a group are added to its literal set instead of
@@ -935,6 +918,23 @@ func balancedConflictDisjunction(terms []iceberg.BooleanExpression) iceberg.Bool
 	return terms[0]
 }
 
+// eqDeletePartitionsToFilter converts equality-delete data files into an
+// OR-of-ANDs BooleanExpression in row (source) space, suitable for passing
+// to validateAddedDataFilesMatchingFilter.
+//
+// For each distinct (spec ID, partition) tuple it resolves each partition
+// field ID to the source schema field name via the file's partition spec, then
+// builds an EqualTo predicate using Reference(sourceFieldName). Multiple
+// fields within one partition are AND-ed; multiple partitions are OR-ed.
+//
+// The resulting expression is projected per-concurrent-manifest's spec ID
+// inside validateAddedDataFilesMatchingFilter (via buildPartitionProjection),
+// ensuring correct conflict detection even after partition-spec evolution.
+//
+// An empty partition tuple (unpartitioned delete) returns AlwaysTrue so the
+// caller falls back to the conservative full-table scan. Callers should
+// normally guard against calling this function for unpartitioned tables (see
+// RowDelta.validate).
 func eqDeletePartitionsToFilter(files []iceberg.DataFile, meta Metadata) (iceberg.BooleanExpression, error) {
 	fragments := make([]equalityDeleteConflictTerm, 0, len(files))
 	specInfoByID := make(map[int]*equalityDeletePartitionSpecInfo)
