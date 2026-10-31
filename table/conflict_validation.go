@@ -893,9 +893,52 @@ type equalityDeleteSourceFieldInfo struct {
 // caller falls back to the conservative full-table scan. Callers should
 // normally guard against calling this function for unpartitioned tables (see
 // RowDelta.validate).
+// equalityDeleteConflictTerm holds either a regular row predicate or the
+// first occurrence of a group of single-field identity partitions.
+// Repeated values for a group are added to its literal set instead of
+// extending the OR expression with another equality.
+type equalityDeleteConflictTerm struct {
+	expr  iceberg.BooleanExpression
+	group *equalityDeleteIdentityGroup
+}
+
+type equalityDeleteIdentityGroupKey struct {
+	specID  int
+	fieldID int
+}
+
+type equalityDeleteIdentityGroup struct {
+	fieldName string
+	literals  []iceberg.Literal
+}
+
+// balancedConflictDisjunction keeps multi-field partition filters shallow.
+// The old left fold required traversal depth proportional to the number of
+// distinct partitions. Pairwise folding takes logarithmic depth without
+// changing OR semantics or the input order of unrelated terms.
+func balancedConflictDisjunction(terms []iceberg.BooleanExpression) iceberg.BooleanExpression {
+	if len(terms) == 0 {
+		return iceberg.AlwaysTrue{}
+	}
+	for len(terms) > 1 {
+		next := terms[:0]
+		for i := 0; i < len(terms); i += 2 {
+			if i+1 == len(terms) {
+				next = append(next, terms[i])
+			} else {
+				next = append(next, iceberg.NewOr(terms[i], terms[i+1]))
+			}
+		}
+		terms = next
+	}
+
+	return terms[0]
+}
+
 func eqDeletePartitionsToFilter(files []iceberg.DataFile, meta Metadata) (iceberg.BooleanExpression, error) {
-	terms := make([]iceberg.BooleanExpression, 0, len(files))
+	fragments := make([]equalityDeleteConflictTerm, 0, len(files))
 	specInfoByID := make(map[int]*equalityDeletePartitionSpecInfo)
+	identityGroups := make(map[equalityDeleteIdentityGroupKey]*equalityDeleteIdentityGroup)
 	seen := make(map[string]struct{}, len(files))
 	var currentSchema *iceberg.Schema
 
@@ -923,37 +966,23 @@ func eqDeletePartitionsToFilter(files []iceberg.DataFile, meta Metadata) (iceber
 			specInfoByID[specID] = specInfo
 		}
 
-		// Sort partition field IDs for deterministic expression order.
 		fieldIDs := make([]int, 0, len(p))
 		for id := range p {
 			fieldIDs = append(fieldIDs, id)
 		}
 		sort.Ints(fieldIDs)
 
-		// Non-identity transforms (bucket, day, hour, truncate, year, month) store
-		// post-transform values in DataFile.Partition(). Building a row-space predicate
-		// with those values would cause validateAddedDataFilesMatchingFilter to
-		// re-apply the transform, producing wrong matches (double-transformation).
-		// Fall back to AlwaysTrue (conservative: treat the eq-delete as table-wide)
-		// until a full PartitionSet-style partition-space approach is added.
-		identityOnly := true
+		// A non-identity value is already transformed, so applying another
+		// row-space transform could miss conflicts. Keep the full-table
+		// fallback even when other fields have identity transforms.
 		for _, fid := range fieldIDs {
 			if pf, ok := specInfo.fields[fid]; ok {
 				if _, isIdentity := pf.Transform.(iceberg.IdentityTransform); !isIdentity {
-					identityOnly = false
-
-					break
+					return iceberg.AlwaysTrue{}, nil
 				}
 			}
 		}
-		if !identityOnly {
-			return iceberg.AlwaysTrue{}, nil
-		}
 
-		// canonicalPartitionKey is injective for the supported partition values
-		// and includes the spec ID. If a custom Literal implementation is not
-		// part of that closed set, skip deduplication and let the existing literal
-		// conversion below preserve its behavior.
 		if key, err := canonicalPartitionKey(f.SpecID(), p); err == nil {
 			if _, duplicate := seen[key]; duplicate {
 				continue
@@ -962,14 +991,13 @@ func eqDeletePartitionsToFilter(files []iceberg.DataFile, meta Metadata) (iceber
 		}
 
 		conjuncts := make([]iceberg.BooleanExpression, 0, len(p))
+		grouped := false
 		for _, partFieldID := range fieldIDs {
 			pf, ok := specInfo.fields[partFieldID]
 			if !ok {
 				return nil, fmt.Errorf("partition field ID %d not found in spec %d", partFieldID, f.SpecID())
 			}
 
-			// Resolve each source field at most once per partition spec. The
-			// current schema is cloned lazily, and only once for this filter.
 			sourceField, resolved := specInfo.sourceFields[partFieldID]
 			if !resolved {
 				if currentSchema == nil {
@@ -986,7 +1014,6 @@ func eqDeletePartitionsToFilter(files []iceberg.DataFile, meta Metadata) (iceber
 			value := p[partFieldID]
 			if value == nil {
 				conjuncts = append(conjuncts, iceberg.IsNull(iceberg.Reference(sourceField.name)))
-
 				continue
 			}
 
@@ -995,25 +1022,53 @@ func eqDeletePartitionsToFilter(files []iceberg.DataFile, meta Metadata) (iceber
 				return nil, fmt.Errorf("partition field %q: %w", sourceField.name, err)
 			}
 
-			conjuncts = append(conjuncts, iceberg.LiteralPredicate(iceberg.OpEQ, iceberg.Reference(sourceField.name), lit))
+			if len(fieldIDs) == 1 {
+				// A one-field identity partition is precisely an IN set in
+				// row space. Group within a spec, preserving the original
+				// cross-spec behavior when specs evolve.
+				key := equalityDeleteIdentityGroupKey{specID: specID, fieldID: partFieldID}
+				group := identityGroups[key]
+				if group == nil {
+					group = &equalityDeleteIdentityGroup{fieldName: sourceField.name}
+					identityGroups[key] = group
+					fragments = append(fragments, equalityDeleteConflictTerm{group: group})
+				}
+				group.literals = append(group.literals, lit)
+				grouped = true
+				break
+			}
+
+			conjuncts = append(conjuncts,
+				iceberg.LiteralPredicate(iceberg.OpEQ, iceberg.Reference(sourceField.name), lit))
+		}
+		if grouped {
+			continue
 		}
 
+		var term iceberg.BooleanExpression
 		if len(conjuncts) == 1 {
-			terms = append(terms, conjuncts[0])
+			term = conjuncts[0]
 		} else {
-			terms = append(terms, iceberg.NewAnd(conjuncts[0], conjuncts[1], conjuncts[2:]...))
+			term = iceberg.NewAnd(conjuncts[0], conjuncts[1], conjuncts[2:]...)
 		}
+		fragments = append(fragments, equalityDeleteConflictTerm{expr: term})
 	}
 
-	if len(terms) == 0 {
+	if len(fragments) == 0 {
 		return iceberg.AlwaysTrue{}, nil
 	}
 
-	if len(terms) == 1 {
-		return terms[0], nil
+	terms := make([]iceberg.BooleanExpression, 0, len(fragments))
+	for _, fragment := range fragments {
+		if fragment.group == nil {
+			terms = append(terms, fragment.expr)
+			continue
+		}
+		terms = append(terms, iceberg.SetPredicate(
+			iceberg.OpIn, iceberg.Reference(fragment.group.fieldName), fragment.group.literals))
 	}
 
-	return iceberg.NewOr(terms[0], terms[1], terms[2:]...), nil
+	return balancedConflictDisjunction(terms), nil
 }
 
 // validateNoNewDeletesForRewrittenFiles rejects the commit if any

@@ -1,0 +1,50 @@
+name: Compare equality-delete conflict predicate benchmarks
+
+on:
+  push:
+    branches:
+      - perf/eq-delete-conflict-predicate-compression
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Compare upstream base and optimized branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          go version
+          git worktree add --detach ../iceberg-baseline b35450588e2d586c883bd90e77c9faa6ae8396fe
+          cp table/eq_delete_predicate_scale_bench_test.go ../iceberg-baseline/table/
+          ( cd ../iceberg-baseline && go test ./table -run '^$' -bench '^BenchmarkEqDeleteConflictPredicateScale$' -benchtime=200ms -count=5 -cpu=1 -timeout=30m ) | tee baseline_bench.txt
+          go test ./table -run '^$' -bench '^BenchmarkEqDeleteConflictPredicateScale$' -benchtime=200ms -count=5 -cpu=1 -timeout=30m | tee optimized_bench.txt
+          {
+            echo '## Base: `b35450588e2d`'
+            echo '```text'
+            cat baseline_bench.txt
+            echo '```'
+            echo '## Optimized'
+            echo '```text'
+            cat optimized_bench.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: equality-delete-conflict-benchmarks
+          path: |
+            baseline_bench.txt
+            optimized_bench.txt
+          if-no-files-found: ignore

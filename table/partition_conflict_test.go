@@ -241,10 +241,10 @@ func TestEqDeletePartitionsToFilterDeduplicatesPartitions(t *testing.T) {
 	filter, err := eqDeletePartitionsToFilter(files, countingMeta)
 	require.NoError(t, err)
 
-	expected := iceberg.NewOr(
-		iceberg.EqualTo(iceberg.Reference("region"), "us-east-1"),
-		iceberg.EqualTo(iceberg.Reference("region"), "eu-west-1"),
-	)
+	expected := iceberg.SetPredicate(iceberg.OpIn, iceberg.Reference("region"), []iceberg.Literal{
+		iceberg.StringLiteral("us-east-1"),
+		iceberg.StringLiteral("eu-west-1"),
+	})
 	assert.True(t, filter.Equals(expected), "duplicate equality-delete partitions should produce one filter term")
 	assert.Equal(t, 1, countingMeta.currentSchemaCalls,
 		"the current schema should be cloned once per filter")
