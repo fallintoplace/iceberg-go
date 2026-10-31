@@ -189,7 +189,7 @@ func TestReplaceBranch(t *testing.T) {
 		tbl, _ := newAssertRefTestTable(t, base, base)
 		for _, tc := range []struct {
 			name string
-			id int64
+			id   int64
 		}{{"release", 100}, {"qa", 99999}, {"", 200}} {
 			tx := tbl.NewTransaction()
 			require.ErrorIs(t, tx.ReplaceBranch(tc.name, tc.id), iceberg.ErrInvalidArgument)
