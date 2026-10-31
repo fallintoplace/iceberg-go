@@ -363,7 +363,35 @@ if err != nil { /* ... */ }
 newTbl, err := txn.Commit(ctx)
 ```
 
-`ReplaceDataFilesByPath(ctx, filesToDelete, filesToAdd, snapshotProps)` and `ReplaceDataFiles(ctx, filesToDelete, dataFilesToAdd, snapshotProps, opts...)` are also available on `*Transaction` for swapping files atomically.
+`ReplaceDataFilesByPath(ctx, filesToDelete, filesToAdd, snapshotProps)` performs an
+**overwrite** of existing files. It is suitable when the logical table data
+changes. `ReplaceDataFiles(ctx, filesToDelete, dataFilesToAdd, snapshotProps, opts...)`
+is the corresponding data-file metadata API.
+
+### Rewrite existing Parquet files
+
+For compaction or other **data-preserving** rewrites, use the path-based
+`RewriteDataFilesByPath`. It reads the replacement Parquet file footers,
+checks the removed files against the target branch's live data files, and
+stages a `replace` snapshot rather than an `overwrite`:
+
+```go
+txn := tbl.NewTransaction()
+err := txn.RewriteDataFilesByPath(ctx, oldFilePaths, newFilePaths, nil)
+if err != nil { /* ... */ }
+newTbl, err := txn.Commit(ctx)
+```
+
+The caller must ensure that the replacement files preserve the same live rows,
+including the effects of delete files and v3 row lineage. The API cannot
+verify data equivalence by comparing Parquet footer metadata.
+
+For rewrites that need a data sequence number or delete-file replacements,
+call `NewRewriteFromPaths(ctx, oldFilePaths, newFilePaths, snapshotProps)`
+and configure the returned `RewriteFiles` builder before calling its `Commit`.
+Like the existing `RewriteFiles` builder, the path-based operation checks
+for conflicting concurrent deletes.
+
 
 ### Transactions
 
