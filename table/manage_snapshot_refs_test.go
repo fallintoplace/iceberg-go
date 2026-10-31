@@ -224,3 +224,45 @@ func TestReplaceBranch(t *testing.T) {
 		require.ErrorIs(t, err, ErrCommitFailed)
 	})
 }
+
+func TestNoOpBranchRefOperationsFenceMixedTransactions(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		stage func(*Transaction) error
+		move  func(*MetadataBuilder) error
+	}{
+		{
+			name:  "fast-forward target changes",
+			stage: func(tx *Transaction) error { return tx.FastForwardBranch("audit", "release") },
+			move:  func(b *MetadataBuilder) error { return b.SetSnapshotRef("audit", 200, BranchRef) },
+		},
+		{
+			name:  "fast-forward source changes",
+			stage: func(tx *Transaction) error { return tx.FastForwardBranch("audit", "release") },
+			move:  func(b *MetadataBuilder) error { return b.SetSnapshotRef("release", 200, TagRef) },
+		},
+		{
+			name:  "replacement target changes",
+			stage: func(tx *Transaction) error { return tx.ReplaceBranch("audit", 300) },
+			move:  func(b *MetadataBuilder) error { return b.SetSnapshotRef("audit", 200, BranchRef) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := manageSnapshotRefsFixture(t)
+			peer, err := MetadataBuilderFromBase(base, "")
+			require.NoError(t, err)
+			require.NoError(t, tc.move(peer))
+			current, err := peer.Build()
+			require.NoError(t, err)
+
+			tbl, cat := newAssertRefTestTable(t, base, current)
+			tx := tbl.NewTransaction()
+			require.NoError(t, tx.SetProperties(iceberg.Properties{"promotion-marker": "staged"}))
+			require.NoError(t, tc.stage(tx))
+			_, err = tx.Commit(t.Context())
+			require.ErrorIs(t, err, ErrCommitFailed)
+			assert.NotContains(t, cat.metadata.Properties(), "promotion-marker")
+			assert.Equal(t, int32(1), cat.attempts.Load())
+		})
+	}
+}

@@ -57,10 +57,15 @@ func (t *Transaction) FastForwardBranch(target, source string) error {
 	if exists && targetRef.Type != BranchRef {
 		return fmt.Errorf("%w: target ref %q is a %s, not a branch", iceberg.ErrInvalidArgument, target, targetRef.Type)
 	}
+	requirements := []Requirement{assertBranchRefSnapshotID(target, t.baseRefSnapshotID(target))}
+	if source != target {
+		requirements = append(requirements, AssertRefSnapshotID(source, t.baseRefSnapshotID(source)))
+	}
 	if exists {
 		if targetRef.SnapshotID == sourceRef.SnapshotID {
-			// Nothing to stage or pin. Still reject a finished transaction.
-			return t.apply(nil, nil)
+			// No metadata update is needed, but pin both refs so that a
+			// staged metadata-only commit cannot miss a concurrent move.
+			return t.applyPinned(nil, requirements, []string{target, source})
 		}
 		lookup := func(id int64) *Snapshot {
 			snap, _ := meta.SnapshotByID(id)
@@ -73,10 +78,6 @@ func (t *Transaction) FastForwardBranch(target, source string) error {
 	}
 
 	update := meta.NewRetainingSnapshotRefUpdate(target, sourceRef.SnapshotID, BranchRef)
-	requirements := []Requirement{assertBranchRefSnapshotID(target, t.baseRefSnapshotID(target))}
-	if source != target {
-		requirements = append(requirements, AssertRefSnapshotID(source, t.baseRefSnapshotID(source)))
-	}
 
 	return t.applyPinned([]Update{update}, requirements, []string{target, source})
 }
@@ -99,7 +100,10 @@ func (t *Transaction) ReplaceBranch(name string, snapshotID int64) error {
 			return fmt.Errorf("%w: ref %q is a %s, not a branch", iceberg.ErrInvalidArgument, name, existing.Type)
 		}
 		if existing.SnapshotID == snapshotID {
-			return t.apply(nil, nil)
+			// A no-op still fences a co-staged metadata update.
+			return t.applyPinned(nil,
+				[]Requirement{assertBranchRefSnapshotID(name, t.baseRefSnapshotID(name))},
+				[]string{name})
 		}
 	}
 	if _, err := meta.SnapshotByID(snapshotID); err != nil {
