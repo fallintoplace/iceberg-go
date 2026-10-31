@@ -27,7 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDynamicPartitionMatcher(t *testing.T) {
+func TestDynamicPartitionKeys(t *testing.T) {
 	spec := iceberg.NewPartitionSpecID(7,
 		iceberg.PartitionField{
 			SourceIDs: []int{1},
@@ -51,23 +51,57 @@ func TestDynamicPartitionMatcher(t *testing.T) {
 		newTestDataFile(t, spec, "file://new-3.parquet",
 			map[int]any{1000: int32(5), 1001: "south"}),
 	}
-	matcher := newDynamicPartitionMatcher(&spec, files)
-	require.Len(t, matcher.byKey, 2, "equal partitions should be deduplicated")
-	require.True(t, matcher.contains(map[int]any{1000: int32(4), 1001: "north"}))
-	require.True(t, matcher.contains(map[int]any{1000: int32(5), 1001: "south"}))
-	require.False(t, matcher.contains(map[int]any{1000: int32(4), 1001: "south"}))
-	require.False(t, matcher.contains(map[int]any{1000: int32(7), 1001: "north"}))
+	keys, err := dynamicPartitionKeys(files)
+	require.NoError(t, err)
+	require.Len(t, keys, 2, "equal partitions should be deduplicated")
+
+	for _, tc := range []struct {
+		partition map[int]any
+		want      bool
+	}{
+		{map[int]any{1000: int32(4), 1001: "north"}, true},
+		{map[int]any{1000: int32(5), 1001: "south"}, true},
+		{map[int]any{1000: int32(4), 1001: "south"}, false},
+		{map[int]any{1000: int32(7), 1001: "north"}, false},
+	} {
+		key, err := canonicalPartitionKey(int32(spec.ID()), tc.partition)
+		require.NoError(t, err)
+		_, got := keys[key]
+		require.Equal(t, tc.want, got)
+	}
 }
 
-func TestDynamicPartitionValueEquality(t *testing.T) {
-	require.True(t, sameDynamicPartitionValue(nil, nil))
-	require.True(t, sameDynamicPartitionValue([]byte{0, 1, 255}, []byte{0, 1, 255}))
-	require.False(t, sameDynamicPartitionValue([]byte{0, 1}, []byte{1, 0}))
-	require.False(t, sameDynamicPartitionValue(int32(1), int64(1)))
-	require.True(t, sameDynamicPartitionValue(float32(math.NaN()), float32(math.NaN())))
-	require.True(t, sameDynamicPartitionValue(math.NaN(), math.NaN()))
-	require.False(t, sameDynamicPartitionValue(math.NaN(), float32(math.NaN())))
-	require.False(t, sameDynamicPartitionValue(math.NaN(), 0.0))
+func TestDynamicPartitionKeysNormalizeRepresentations(t *testing.T) {
+	spec := iceberg.NewPartitionSpecID(8,
+		iceberg.PartitionField{
+			SourceIDs: []int{1},
+			FieldID:   1000,
+			Name:      "day",
+			Transform: iceberg.IdentityTransform{},
+		},
+	)
+	files := []iceberg.DataFile{
+		newTestDataFile(t, spec, "file://date.parquet", map[int]any{1000: iceberg.Date(42)}),
+	}
+	keys, err := dynamicPartitionKeys(files)
+	require.NoError(t, err)
+
+	// A writer and an Avro manifest decoder may use different Go types
+	// for the same logical Iceberg date. They must replace one partition.
+	key, err := canonicalPartitionKey(int32(spec.ID()), map[int]any{1000: int32(42)})
+	require.NoError(t, err)
+	require.Contains(t, keys, key)
+
+	// Cross-spec tuples never match even when the value and field ID do.
+	otherKey, err := canonicalPartitionKey(int32(spec.ID()+1), map[int]any{1000: iceberg.Date(42)})
+	require.NoError(t, err)
+	require.NotContains(t, keys, otherKey)
+
+	nanKey, err := canonicalPartitionKey(int32(spec.ID()), map[int]any{1000: math.NaN()})
+	require.NoError(t, err)
+	nanAgain, err := canonicalPartitionKey(int32(spec.ID()), map[int]any{1000: math.NaN()})
+	require.NoError(t, err)
+	require.Equal(t, nanKey, nanAgain)
 }
 
 func TestDynamicPartitionOverwriteDataFiles(t *testing.T) {
