@@ -96,6 +96,33 @@ The exported env vars and `make integration-test` invocation are identical to th
 
 Tests requiring Spark 4 (currently the variant and unknown-type tests) automatically skip on the Spark 3.5 setup.
 
+## Snapshot branch promotion
+
+Use a transaction to advance a branch to a source branch or tag, or to explicitly
+replace a branch head with any existing snapshot. Existing branch retention
+settings are retained. Fast-forward refuses divergent histories. Both operations
+protect the target against concurrent commits; fast-forward also protects its
+source ref against concurrent changes.
+
+```go
+tx := tbl.NewTransaction()
+if err := tx.FastForwardBranch("main", "audit"); err != nil {
+    return err
+}
+_, err := tx.Commit(ctx)
+return err
+```
+
+The CLI supports the same operations:
+
+```shell
+iceberg branch fast-forward my.db.orders main audit --yes
+iceberg branch replace my.db.orders main 123456789 --yes
+```
+
+The replace command can move a branch backwards or across divergent histories.
+Omit `--yes` for an interactive confirmation prompt.
+
 ## Feature Support / Roadmap
 
 ### FileSystem Support
