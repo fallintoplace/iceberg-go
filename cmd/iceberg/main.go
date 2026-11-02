@@ -84,8 +84,8 @@ type LocationCmd struct {
 // SnapshotDiffCmd compares live content files from two retained snapshots.
 type SnapshotDiffCmd struct {
 	TableID string `arg:"positional,required" help:"full path to a table"`
-	From int64 `arg:"--from,required" help:"source snapshot ID"`
-	To int64 `arg:"--to,required" help:"destination snapshot ID"`
+	From    int64  `arg:"--from,required" help:"source snapshot ID"`
+	To      int64  `arg:"--to,required" help:"destination snapshot ID"`
 }
 
 type FilesCmd struct {
