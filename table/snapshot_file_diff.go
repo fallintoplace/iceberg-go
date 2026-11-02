@@ -37,9 +37,9 @@ type SnapshotFileDiff struct {
 	FromSnapshotID int64
 	ToSnapshotID   int64
 
-	AddedDataFiles    []iceberg.DataFile
-	RemovedDataFiles  []iceberg.DataFile
-	AddedDeleteFiles  []iceberg.DataFile
+	AddedDataFiles     []iceberg.DataFile
+	RemovedDataFiles   []iceberg.DataFile
+	AddedDeleteFiles   []iceberg.DataFile
 	RemovedDeleteFiles []iceberg.DataFile
 }
 
