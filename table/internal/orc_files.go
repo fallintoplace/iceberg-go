@@ -62,7 +62,7 @@ type orcFileReader struct {
     decoder *orc.Reader
     schema *arrow.Schema
     size int64
-    allocator arrow.MemoryAllocator
+    allocator memory.Allocator
     used bool
     closed bool
 }
