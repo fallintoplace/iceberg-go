@@ -29,6 +29,13 @@ Apache Iceberg Go reads and writes table format versions 1, 2, and 3. The maximu
 
 All V1 features are supported. V1 is the format-version baseline.
 
+Data-file reads support Parquet and a subset of ORC files. The ORC reader
+preserves Iceberg field IDs from ORC type attributes and streams Arrow batches
+for primitive and nested structs, lists, and maps. It currently supports ORC
+NONE, ZLIB, and SNAPPY compression. Unsupported encodings (including ZSTD),
+variant, UUID, geometry/geography, timestamp-instant, and partial ORC scan task
+ranges return errors. ORC data-file writing is not implemented.
+
 ### V2
 
 | Feature | Status |
