@@ -1,0 +1,304 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package internal
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math"
+	"strconv"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	arrowavro "github.com/apache/arrow-go/v18/arrow/avro"
+	"github.com/apache/arrow-go/v18/arrow/compute"
+	"github.com/apache/iceberg-go"
+	iceio "github.com/apache/iceberg-go/io"
+	avro "github.com/twmb/avro"
+	"github.com/twmb/avro/ocf"
+)
+
+// AvroFileSource reads Iceberg data files stored as Avro object container files.
+// The decoder streams Arrow record batches. Column pruning is performed by the
+// scanner after decoding, rather than by the OCF decoder.
+type AvroFileSource struct {
+	fs   iceio.IO
+	file iceberg.DataFile
+}
+
+func (s *AvroFileSource) GetReader(ctx context.Context) (FileReader, error) {
+	f, err := s.fs.Open(ctx, s.file.FilePath())
+	if err != nil {
+		return nil, err
+	}
+	reader, err := newAvroFileReader(ctx, f)
+	if err != nil {
+		return nil, errors.Join(err, f.Close())
+	}
+	return reader, nil
+}
+
+type avroFileReader struct {
+	file     iceio.File
+	records  *arrowavro.OCFReader
+	schema   *arrow.Schema
+	fileSize int64
+	closed   bool
+	started  bool
+}
+
+// newAvroFileReader reads the original OCF header separately because Arrow's
+// Avro-to-Arrow conversion drops Iceberg's custom field-id properties.
+func newAvroFileReader(ctx context.Context, f iceio.File) (*avroFileReader, error) {
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	header, err := ocf.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	schemaJSON := string(header.Metadata()["avro.schema"])
+	if err := header.Close(); err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return nil, err
+	}
+	records, err := arrowavro.NewOCFReader(f,
+		arrowavro.WithAllocator(compute.GetAllocator(ctx)),
+		arrowavro.WithChunk(2048),
+		arrowavro.WithReadCacheSize(16),
+		arrowavro.WithRecordCacheSize(1))
+	if err != nil {
+		return nil, err
+	}
+	schema, err := schemaWithAvroFieldIDs(records.Schema(), schemaJSON)
+	if err != nil {
+		records.Release()
+		return nil, err
+	}
+	return &avroFileReader{file: f, records: records, schema: schema, fileSize: stat.Size()}, nil
+}
+
+func (r *avroFileReader) Metadata() Metadata             { return nil }
+func (r *avroFileReader) SourceFileSize() int64          { return r.fileSize }
+func (r *avroFileReader) Schema() (*arrow.Schema, error) { return r.schema, nil }
+
+func (r *avroFileReader) PrunedSchema(_ map[int]struct{}, _ iceberg.NameMapping) (*arrow.Schema, []int, error) {
+	// Keep the full schema to preserve the IDs needed by residual filters and
+	// schema evolution. GetRecords similarly reads every OCF column.
+	return r.schema, nil, nil
+}
+
+func (r *avroFileReader) GetRecords(ctx context.Context, _ []int, tester any) (array.RecordReader, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.closed {
+		return nil, fmt.Errorf("%w: Avro file reader is closed", iceberg.ErrInvalidArgument)
+	}
+	if tester != nil {
+		return nil, fmt.Errorf("%w: Avro files do not support Parquet row-group filters", iceberg.ErrInvalidArgument)
+	}
+	if r.started {
+		return nil, fmt.Errorf("%w: Avro OCF record streams are single-use", iceberg.ErrInvalidArgument)
+	}
+	r.started = true
+	// The FileReader retains its reference until Close. The scanner releases
+	// only the additional reference returned here.
+	r.records.Retain()
+	return r.records, nil
+}
+
+func (r *avroFileReader) ReadTable(ctx context.Context) (arrow.Table, error) {
+	records, err := r.GetRecords(ctx, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer records.Release()
+	var batches []arrow.RecordBatch
+	defer func() {
+		for _, batch := range batches {
+			batch.Release()
+		}
+	}()
+	for records.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		batch := records.RecordBatch()
+		batch.Retain()
+		batches = append(batches, batch)
+	}
+	if err := records.Err(); err != nil {
+		return nil, err
+	}
+	return array.NewTableFromRecords(records.Schema(), batches), nil
+}
+
+func (r *avroFileReader) Close() error {
+	if r.closed {
+		return nil
+	}
+	r.closed = true
+	r.records.Release()
+	return r.file.Close()
+}
+
+// schemaWithAvroFieldIDs restores Iceberg IDs stored in the Avro OCF writer
+// schema. The scanner's ArrowSchemaToIceberg uses these IDs, not field names,
+// to implement renamed-column reads and projections.
+func schemaWithAvroFieldIDs(sc *arrow.Schema, schemaJSON string) (*arrow.Schema, error) {
+	parsed, err := avro.Parse(schemaJSON)
+	if err != nil {
+		return nil, fmt.Errorf("%w: parse Avro writer schema: %v", iceberg.ErrInvalidSchema, err)
+	}
+	root := parsed.Root().ExpandReferences()
+	if root.Type != "record" || len(root.Fields) != sc.NumFields() {
+		return nil, fmt.Errorf("%w: Avro root record does not match Arrow schema", iceberg.ErrInvalidSchema)
+	}
+	fields := make([]arrow.Field, sc.NumFields())
+	used := make(map[int]struct{})
+	for i, af := range root.Fields {
+		source := sc.Field(i)
+		if source.Name != af.Name {
+			return nil, fmt.Errorf("%w: Avro field %q differs from Arrow field %q", iceberg.ErrInvalidSchema, af.Name, source.Name)
+		}
+		fields[i], err = decorateAvroField(source, af.Type, af.Props, "field-id", used)
+		if err != nil {
+			return nil, fmt.Errorf("avro field %q: %w", source.Name, err)
+		}
+	}
+	metadata := sc.Metadata()
+	return arrow.NewSchema(fields, &metadata), nil
+}
+
+func decorateAvroField(field arrow.Field, node avro.SchemaNode, props map[string]any, idProperty string, used map[int]struct{}) (arrow.Field, error) {
+	var err error
+	field, err = addAvroFieldID(field, props, idProperty, used)
+	if err != nil {
+		return field, err
+	}
+	if node.Type == "union" {
+		// Only a nullable ["null", T] union is legal in Iceberg data files.
+		var nonNull *avro.SchemaNode
+		for i := range node.Branches {
+			if node.Branches[i].Type == "null" {
+				continue
+			}
+			if nonNull != nil {
+				return field, fmt.Errorf("%w: Avro union has multiple non-null alternatives", iceberg.ErrNotImplemented)
+			}
+			nonNull = &node.Branches[i]
+		}
+		if nonNull == nil || len(node.Branches) != 2 {
+			return field, fmt.Errorf("%w: Avro union is not nullable with one value type", iceberg.ErrNotImplemented)
+		}
+		node = *nonNull
+	}
+	switch node.Type {
+	case "record":
+		st, ok := field.Type.(*arrow.StructType)
+		if !ok || st.NumFields() != len(node.Fields) {
+			return field, fmt.Errorf("%w: Avro record and Arrow struct differ", iceberg.ErrInvalidSchema)
+		}
+		children := make([]arrow.Field, st.NumFields())
+		for i, child := range node.Fields {
+			if st.Field(i).Name != child.Name {
+				return field, fmt.Errorf("%w: Avro struct field %q differs from Arrow field %q", iceberg.ErrInvalidSchema, child.Name, st.Field(i).Name)
+			}
+			children[i], err = decorateAvroField(st.Field(i), child.Type, child.Props, "field-id", used)
+			if err != nil {
+				return field, fmt.Errorf("record field %q: %w", child.Name, err)
+			}
+		}
+		field.Type = arrow.StructOf(children...)
+	case "array":
+		if node.LogicalType == "map" {
+			// Arrow's OCF reader returns this Iceberg map encoding as a list,
+			// not a map. Silently treating it as a list would lose map values.
+			return field, fmt.Errorf("%w: Avro array-backed Iceberg maps", iceberg.ErrNotImplemented)
+		}
+		lt, ok := field.Type.(*arrow.ListType)
+		if !ok || node.Items == nil {
+			return field, fmt.Errorf("%w: Avro array and Arrow list differ", iceberg.ErrInvalidSchema)
+		}
+		item, err := decorateAvroField(lt.ElemField(), *node.Items, node.Props, "element-id", used)
+		if err != nil {
+			return field, err
+		}
+		field.Type = arrow.ListOfField(item)
+	case "map":
+		mt, ok := field.Type.(*arrow.MapType)
+		if !ok || node.Values == nil {
+			return field, fmt.Errorf("%w: Avro map and Arrow map differ", iceberg.ErrInvalidSchema)
+		}
+		key, err := addAvroFieldID(mt.KeyField(), node.Props, "key-id", used)
+		if err != nil {
+			return field, err
+		}
+		value, err := decorateAvroField(mt.ItemField(), *node.Values, node.Props, "value-id", used)
+		if err != nil {
+			return field, err
+		}
+		field.Type = arrow.MapOfFields(key, value)
+	case "boolean", "int", "long", "float", "double", "bytes", "string", "fixed", "null":
+		if node.LogicalType == "timestamp-micros" {
+			if utc, ok := node.Props["adjust-to-utc"].(bool); ok && utc {
+				field.Type = &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}
+			}
+		}
+	default:
+		return field, fmt.Errorf("%w: unsupported Avro type %q", iceberg.ErrNotImplemented, node.Type)
+	}
+	return field, nil
+}
+
+func addAvroFieldID(field arrow.Field, props map[string]any, property string, used map[int]struct{}) (arrow.Field, error) {
+	raw, ok := props[property]
+	if !ok {
+		return field, nil // Name mapping can supply IDs for legacy files.
+	}
+	var id int64
+	switch value := raw.(type) {
+	case int:
+		id = int64(value)
+	case int64:
+		id = value
+	case float64:
+		if math.Trunc(value) != value || value > math.MaxInt32 || value < 1 {
+			return field, fmt.Errorf("%w: invalid Avro %s %v", iceberg.ErrInvalidSchema, property, raw)
+		}
+		id = int64(value)
+	default:
+		return field, fmt.Errorf("%w: Avro %s must be an integer", iceberg.ErrInvalidSchema, property)
+	}
+	if id < 1 || id > math.MaxInt32 {
+		return field, fmt.Errorf("%w: invalid Avro %s %d", iceberg.ErrInvalidSchema, property, id)
+	}
+	if _, exists := used[int(id)]; exists {
+		return field, fmt.Errorf("%w: duplicate Avro field ID %d", iceberg.ErrInvalidSchema, id)
+	}
+	used[int(id)] = struct{}{}
+	meta := field.Metadata.ToMap()
+	meta["PARQUET:field_id"] = strconv.FormatInt(id, 10)
+	field.Metadata = arrow.MetadataFrom(meta)
+	return field, nil
+}
