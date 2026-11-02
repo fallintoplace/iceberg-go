@@ -99,11 +99,10 @@ func diffTestTable(
 	t.Helper()
 	spec := *iceberg.UnpartitionedSpec
 	meta, err := NewMetadata(simpleSchema(), &spec, UnsortedSortOrder,
-		"mem://diff/table", nil)
+		"mem://diff/table", iceberg.Properties{PropertyFormatVersion: fmt.Sprint(version)})
 	require.NoError(t, err)
 	builder, err := MetadataBuilderFromBase(meta, "")
 	require.NoError(t, err)
-	builder.formatVersion = version
 
 	for i := range snapshots {
 		require.NoError(t, builder.AddSnapshot(&snapshots[i]))
@@ -172,7 +171,6 @@ func TestDiffSnapshotFilesV1EmbeddedManifests(t *testing.T) {
 func TestDiffSnapshotFilesV2ManifestRewriteAndDeleteFiles(t *testing.T) {
 	fs := iceio.NewMemFS()
 	prefix := "mem://diff/v2/"
-	unchanged := diffTestFile(t, prefix+"unchanged.parquet", iceberg.EntryContentData)
 	moved := diffTestFile(t, prefix+"moved.parquet", iceberg.EntryContentData)
 	added := diffTestFile(t, prefix+"added.parquet", iceberg.EntryContentData)
 	removedDelete := diffTestFile(t, prefix+"removed-delete.parquet", iceberg.EntryContentPosDeletes)
@@ -181,7 +179,7 @@ func TestDiffSnapshotFilesV2ManifestRewriteAndDeleteFiles(t *testing.T) {
 	// Deliberately leave the shared manifest's Avro file absent. Its descriptor
 	// exists in both lists, so reading it would be an unnecessary I/O error.
 	shared := iceberg.NewManifestBuilder(
-		2, prefix+"unchanged-manifest.avro", 100, 0, 1).AddedFiles(1).Build()
+		2, prefix+"unchanged-manifest.avro", 100, 0, 1).SequenceNumber(1, 1).AddedFiles(1).Build()
 	oldData := writeDiffTestManifest(t, fs, 2, prefix+"old-data.avro",
 		iceberg.ManifestContentData, 1, []iceberg.DataFile{moved}, nil, nil)
 	newData := writeDiffTestManifest(t, fs, 2, prefix+"new-data.avro",
@@ -194,9 +192,7 @@ func TestDiffSnapshotFilesV2ManifestRewriteAndDeleteFiles(t *testing.T) {
 		iceberg.ManifestContentDeletes, 2,
 		[]iceberg.DataFile{addedDelete}, nil, nil)
 
-	// The unchanged data file is only represented by a shared descriptor,
-	// whose path does not exist on disk. It must not affect the diff.
-	_ = unchanged
+	// A shared manifest that cannot be opened must not be read during diff.
 	fromList := writeDiffTestManifestList(t, fs, prefix+"list1.avro", 1, 1,
 		[]iceberg.ManifestFile{shared, oldData, oldDeletes})
 	toList := writeDiffTestManifestList(t, fs, prefix+"list2.avro", 2, 2,
