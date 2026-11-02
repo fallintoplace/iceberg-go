@@ -306,4 +306,3 @@ func orcValidFooterSignature(file iceio.File) error {
     return nil
 }
 
-var _ = errors.Is
