@@ -116,6 +116,37 @@ func TestAvroNestedFieldIDs(t *testing.T) {
 	require.Equal(t, int64(1), records.RecordBatch().NumRows())
 }
 
+func TestAvroStringMapFieldIDs(t *testing.T) {
+	const schema = `{"type":"record","name":"row","fields":[{"name":"attrs","field-id":1,"type":{"type":"map","values":"long","key-id":2,"value-id":3}}]}`
+	path := writeAvroOCF(t, schema, map[string]any{"attrs": map[string]int64{"a": 5}})
+	reader := openAvroFile(t, path, 1)
+	arrowSchema, err := reader.Schema()
+	require.NoError(t, err)
+	fileSchema, err := table.ArrowSchemaToIceberg(arrowSchema, false, nil)
+	require.NoError(t, err)
+	field, found := fileSchema.FindFieldByID(1)
+	require.True(t, found)
+	m, ok := field.Type.(*iceberg.MapType)
+	require.True(t, ok)
+	require.Equal(t, 2, m.KeyID)
+	require.Equal(t, 3, m.ValueID)
+	records, err := reader.GetRecords(context.Background(), nil, nil)
+	require.NoError(t, err)
+	defer records.Release()
+	require.True(t, records.Next())
+	require.Equal(t, int64(1), records.RecordBatch().NumRows())
+}
+
+func TestAvroReadCancelledBeforeIteration(t *testing.T) {
+	const schema = `{"type":"record","name":"row","fields":[{"name":"value","type":"long","field-id":1}]}`
+	path := writeAvroOCF(t, schema, map[string]any{"value": int64(1)})
+	reader := openAvroFile(t, path, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := reader.GetRecords(ctx, nil, nil)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestAvroRejectsInvalidAndDuplicateFieldIDs(t *testing.T) {
 	for _, tt := range []struct{ name, schema string }{
 		{"duplicate", `{"type":"record","name":"row","fields":[{"name":"a","type":"long","field-id":1},{"name":"b","type":"long","field-id":1}]}`},
