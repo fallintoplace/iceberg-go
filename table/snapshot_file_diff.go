@@ -60,7 +60,8 @@ func (d SnapshotFileDiff) HasChanges() bool {
 // For the remaining manifests, ADDED and EXISTING entries are live; DELETED
 // entries are tombstones and must not be included. Data-file paths identify
 // immutable content, so a file rewritten into a different manifest does not
-// count as added or removed.
+// count as added or removed. In v3, deletion vectors use the Puffin
+// location, blob offset, and blob length as their identity.
 //
 // This works for v1 snapshots that embed manifest paths, as well as v1-v3
 // snapshots with manifest lists. It reads only metadata and never reads the
@@ -128,10 +129,10 @@ func (t Table) DiffSnapshotFiles(ctx context.Context, fromSnapshotID, toSnapshot
 
 	// A manifest rewrite can move the same data file into a different
 	// manifest without modifying table contents. Cancel those paths out.
-	for path := range fromFiles {
-		if _, ok := toFiles[path]; ok {
-			delete(fromFiles, path)
-			delete(toFiles, path)
+	for key := range fromFiles {
+		if _, ok := toFiles[key]; ok {
+			delete(fromFiles, key)
+			delete(toFiles, key)
 		}
 	}
 
@@ -182,8 +183,33 @@ func uniqueSnapshotManifests(from, to []iceberg.ManifestFile) (fromOnly, toOnly 
 	return fromOnly, toOnly
 }
 
-func snapshotDiffLiveFiles(ctx context.Context, fs iceio.IO, manifests []iceberg.ManifestFile) (map[string]iceberg.DataFile, error) {
-	files := make(map[string]iceberg.DataFile)
+// snapshotDiffFileKey uses the spec's identity for content files. A v3 Puffin
+// file may hold several different deletion vector blobs, so its path alone
+// is not enough to identify the vector.
+type snapshotDiffFileKey struct {
+	path    string
+	content iceberg.ManifestEntryContent
+	offset  int64
+	length  int64
+}
+
+func snapshotFileDiffKey(file iceberg.DataFile) (snapshotDiffFileKey, error) {
+	key := snapshotDiffFileKey{path: file.FilePath(), content: file.ContentType()}
+	if IsDeletionVector(file) {
+		offset := file.ContentOffset()
+		length := file.ContentSizeInBytes()
+		if offset == nil || length == nil {
+			return key, fmt.Errorf("%w: deletion vector %q has no content offset or length",
+				ErrInvalidMetadata, file.FilePath())
+		}
+		key.offset = *offset
+		key.length = *length
+	}
+	return key, nil
+}
+
+func snapshotDiffLiveFiles(ctx context.Context, fs iceio.IO, manifests []iceberg.ManifestFile) (map[snapshotDiffFileKey]iceberg.DataFile, error) {
+	files := make(map[snapshotDiffFileKey]iceberg.DataFile)
 	for _, manifest := range manifests {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -201,7 +227,11 @@ func snapshotDiffLiveFiles(ctx context.Context, fs iceio.IO, manifests []iceberg
 			file := entry.DataFile()
 			switch file.ContentType() {
 			case iceberg.EntryContentData, iceberg.EntryContentPosDeletes, iceberg.EntryContentEqDeletes:
-				files[file.FilePath()] = file
+				key, err := snapshotFileDiffKey(file)
+				if err != nil {
+					return nil, fmt.Errorf("manifest %q: %w", manifest.FilePath(), err)
+				}
+				files[key] = file
 			default:
 				return nil, fmt.Errorf("%w: unknown content type %d in manifest %q", ErrInvalidMetadata,
 					file.ContentType(), manifest.FilePath())
@@ -213,6 +243,14 @@ func snapshotDiffLiveFiles(ctx context.Context, fs iceio.IO, manifests []iceberg
 
 func sortSnapshotDiffFiles(files []iceberg.DataFile) {
 	slices.SortFunc(files, func(a, b iceberg.DataFile) int {
-		return cmp.Compare(a.FilePath(), b.FilePath())
+		// Keys are validated while reading the manifest entries.
+		ak, _ := snapshotFileDiffKey(a)
+		bk, _ := snapshotFileDiffKey(b)
+		return cmp.Or(
+			cmp.Compare(ak.path, bk.path),
+			cmp.Compare(ak.content, bk.content),
+			cmp.Compare(ak.offset, bk.offset),
+			cmp.Compare(ak.length, bk.length),
+		)
 	})
 }
