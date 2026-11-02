@@ -94,6 +94,8 @@ func TestAvroReadByFieldIDAfterRename(t *testing.T) {
 	require.True(t, projected.Column(1).IsNull(0))
 	require.False(t, r.Next())
 	require.NoError(t, r.Err())
+	_, err = reader.GetRecords(context.Background(), nil, nil)
+	require.Error(t, err, "a consumed Avro stream must not return an empty second read")
 }
 
 func TestAvroNestedFieldIDs(t *testing.T) {
