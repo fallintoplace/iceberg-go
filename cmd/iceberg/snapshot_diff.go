@@ -18,20 +18,20 @@
 package main
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    "github.com/apache/iceberg-go/catalog"
+	"github.com/apache/iceberg-go/catalog"
 )
 
 // runSnapshotDiff compares metadata only; no data files are opened.
 func runSnapshotDiff(ctx context.Context, output Output, cat catalog.Catalog, cmd *SnapshotDiffCmd) {
-    tbl := loadTable(ctx, output, cat, cmd.TableID)
-    diff, err := tbl.DiffSnapshotFiles(ctx, cmd.From, cmd.To)
-    if err != nil {
-        output.Error(fmt.Errorf("diff snapshots: %w", err))
-        osExit(1)
-        return
-    }
-    output.SnapshotFileDiff(diff)
+	tbl := loadTable(ctx, output, cat, cmd.TableID)
+	diff, err := tbl.DiffSnapshotFiles(ctx, cmd.From, cmd.To)
+	if err != nil {
+		output.Error(fmt.Errorf("diff snapshots: %w", err))
+		osExit(1)
+		return
+	}
+	output.SnapshotFileDiff(diff)
 }
