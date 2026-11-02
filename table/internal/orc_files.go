@@ -20,9 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math"
-	"os"
 	"strconv"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -401,6 +399,3 @@ func orcEncodeByteRLE(values []byte) []byte {
 	return out
 }
 
-// Keep the no-output-on-Abort guarantee even for partially written files.
-var _ = fs.ErrNotExist
-var _ = os.ErrNotExist
