@@ -47,6 +47,7 @@ require (
 	github.com/klauspost/compress v1.20.3
 	github.com/pierrec/lz4/v4 v4.1.33
 	github.com/pterm/pterm v0.12.84
+	github.com/scritchley/orc v0.0.0-20210513144143-06dddf1ad665
 	github.com/stretchr/testify v1.12.1
 	github.com/substrait-io/substrait-go/v8 v8.1.1
 	github.com/twmb/avro v1.9.0
