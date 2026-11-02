@@ -255,6 +255,74 @@ func TestDiffSnapshotFilesV2ManifestRewriteAndDeleteFiles(t *testing.T) {
 	require.Equal(t, []string{removedDelete.FilePath()}, diffFilePaths(diff.RemovedDeleteFiles))
 }
 
+func writeDiffTestManifestListV3(
+	t *testing.T, fs iceio.WriteFileIO, path string,
+	snapshotID, sequenceNumber int64, manifests []iceberg.ManifestFile,
+) string {
+	t.Helper()
+	out, err := fs.Create(context.Background(), path)
+	require.NoError(t, err)
+	require.NoError(t, iceberg.WriteManifestList(3, out, snapshotID, nil,
+		&sequenceNumber, 0, manifests))
+	require.NoError(t, out.Close())
+	return path
+}
+
+func diffTestDeletionVector(
+	t *testing.T, puffinPath, dataPath string, offset int64,
+) iceberg.DataFile {
+	t.Helper()
+	builder, err := iceberg.NewDataFileBuilder(
+		*iceberg.UnpartitionedSpec, iceberg.EntryContentPosDeletes,
+		puffinPath, iceberg.PuffinFile, nil, nil, nil, 10, 1024)
+	require.NoError(t, err)
+	return builder.
+		ReferencedDataFile(dataPath).
+		ContentOffset(offset).
+		ContentSizeInBytes(32).
+		Build()
+}
+
+func TestDiffSnapshotFilesV3DeletionVectorsSharePuffinFile(t *testing.T) {
+	fs := iceio.NewMemFS()
+	prefix := "mem://diff/v3/"
+	puffin := prefix + "deletes.puffin"
+	oldA := diffTestDeletionVector(t, puffin, prefix+"a.parquet", 100)
+	newA := diffTestDeletionVector(t, puffin, prefix+"a.parquet", 200)
+	sameB := diffTestDeletionVector(t, puffin, prefix+"b.parquet", 300)
+
+	// Two DVs can live in one Puffin file. A replacement must not be hidden
+	// by path-only deduplication, nor should the retained DV be reported.
+	oldManifest := writeDiffTestManifest(t, fs, 3, prefix+"old.avro",
+		iceberg.ManifestContentDeletes, 1, []iceberg.DataFile{oldA, sameB}, nil, nil)
+	newManifest := writeDiffTestManifest(t, fs, 3, prefix+"new.avro",
+		iceberg.ManifestContentDeletes, 2, []iceberg.DataFile{newA, sameB}, nil, nil)
+
+	fromList := writeDiffTestManifestListV3(t, fs, prefix+"from-list.avro", 1, 1,
+		[]iceberg.ManifestFile{oldManifest})
+	toList := writeDiffTestManifestListV3(t, fs, prefix+"to-list.avro", 2, 2,
+		[]iceberg.ManifestFile{newManifest})
+	now := time.Now().UnixMilli()
+	parent, zero := int64(1), int64(0)
+	tbl := diffTestTable(t, 3, fs,
+		Snapshot{SnapshotID: 1, SequenceNumber: 1, TimestampMs: now, ManifestList: fromList,
+			FirstRowID: &zero, AddedRows: &zero},
+		Snapshot{SnapshotID: 2, SequenceNumber: 2, TimestampMs: now + 1,
+			ParentSnapshotID: &parent, ManifestList: toList, FirstRowID: &zero, AddedRows: &zero})
+
+	diff, err := tbl.DiffSnapshotFiles(context.Background(), 1, 2)
+	require.NoError(t, err)
+	require.True(t, diff.HasChanges())
+	require.Empty(t, diff.AddedDataFiles)
+	require.Empty(t, diff.RemovedDataFiles)
+	require.Len(t, diff.AddedDeleteFiles, 1)
+	require.Len(t, diff.RemovedDeleteFiles, 1)
+	require.Equal(t, puffin, diff.AddedDeleteFiles[0].FilePath())
+	require.Equal(t, int64(200), *diff.AddedDeleteFiles[0].ContentOffset())
+	require.Equal(t, puffin, diff.RemovedDeleteFiles[0].FilePath())
+	require.Equal(t, int64(100), *diff.RemovedDeleteFiles[0].ContentOffset())
+}
+
 func TestDiffSnapshotFilesDifferentBranchesAndSorting(t *testing.T) {
 	fs := iceio.NewMemFS()
 	prefix := "mem://diff/branches/"
