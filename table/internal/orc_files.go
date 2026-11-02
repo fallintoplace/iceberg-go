@@ -93,9 +93,13 @@ func newORCColumn(field iceberg.NestedField, arrowField arrow.Field) (orcColumn,
 	case iceberg.Int32Type:
 		c.kind = 3
 		if arrowField.Type.ID() != arrow.INT32 { return c, fmt.Errorf("ORC %s: expected Arrow int32",field.Name) }
-	case iceberg.Int64Type, iceberg.TimeType:
+	case iceberg.Int64Type:
 		c.kind = 4
-		if arrowField.Type.ID() != arrow.INT64 && arrowField.Type.ID() != arrow.TIME64 { return c, fmt.Errorf("ORC %s: expected Arrow int64 or time64",field.Name) }
+		if arrowField.Type.ID() != arrow.INT64 { return c, fmt.Errorf("ORC %s: expected Arrow int64",field.Name) }
+	case iceberg.TimeType:
+		c.kind = 4
+		timeType, ok := arrowField.Type.(*arrow.Time64Type)
+		if !ok || timeType.Unit != arrow.Microsecond { return c, fmt.Errorf("ORC %s: expected Arrow time64[us]",field.Name) }
 	case iceberg.Float32Type:
 		c.kind = 5
 		if arrowField.Type.ID() != arrow.FLOAT32 { return c, fmt.Errorf("ORC %s: expected Arrow float32",field.Name) }
@@ -166,9 +170,9 @@ func (w *orcFileWriter) Write(batch arrow.RecordBatch) error {
 	if int(batch.NumCols())!=len(w.columns) {return fmt.Errorf("%w: ORC record batch column count changed",iceberg.ErrInvalidArgument)}
 	for i:=range w.columns {
 		c:= &w.columns[i]
-		if batch.Schema().Field(i).Name!=c.field.Name {
-			return fmt.Errorf("%w: ORC column %q was reordered",iceberg.ErrInvalidArgument,c.field.Name)
-		}
+		arrowField := batch.Schema().Field(i)
+		_, err := newORCColumn(c.field, arrowField)
+		if err != nil { return err }
 	}
 	for col:=range w.columns {
 		c:= &w.columns[col]
