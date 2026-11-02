@@ -96,11 +96,9 @@ func newAvroFileReader(ctx context.Context, f iceio.File) (*avroFileReader, erro
 	return &avroFileReader{file: f, records: records, schema: schema, fileSize: stat.Size()}, nil
 }
 
-func (r *avroFileReader) Metadata() Metadata     { return nil }
-func (r *avroFileReader) SourceFileSize() int64  { return r.fileSize }
-func (r *avroFileReader) Schema() (*arrow.Schema, error) {
-	return r.schema, nil
-}
+func (r *avroFileReader) Metadata() Metadata             { return nil }
+func (r *avroFileReader) SourceFileSize() int64          { return r.fileSize }
+func (r *avroFileReader) Schema() (*arrow.Schema, error) { return r.schema, nil }
 
 func (r *avroFileReader) PrunedSchema(_ map[int]struct{}, _ iceberg.NameMapping) (*arrow.Schema, []int, error) {
 	// Keep the full schema to preserve the IDs needed by residual filters and
