@@ -156,7 +156,11 @@ func TestAvroRejectsInvalidAndDuplicateFieldIDs(t *testing.T) {
 		{"non-positive", `{"type":"record","name":"row","fields":[{"name":"a","type":"long","field-id":-1}]}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			path := writeAvroOCF(t, tt.schema, map[string]any{"a": int64(1), "b": int64(2)})
+			row := map[string]any{"a": int64(1)}
+			if tt.name == "duplicate" {
+				row["b"] = int64(2)
+			}
+			path := writeAvroOCF(t, tt.schema, row)
 			stat, err := os.Stat(path)
 			require.NoError(t, err)
 			df, err := iceberg.NewDataFileBuilder(*iceberg.UnpartitionedSpec,
