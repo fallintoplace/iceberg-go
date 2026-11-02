@@ -60,6 +60,7 @@ type avroFileReader struct {
 	schema   *arrow.Schema
 	fileSize int64
 	closed   bool
+	started  bool
 }
 
 // newAvroFileReader reads the original OCF header separately because Arrow's
@@ -116,6 +117,10 @@ func (r *avroFileReader) GetRecords(ctx context.Context, _ []int, tester any) (a
 	if tester != nil {
 		return nil, fmt.Errorf("%w: Avro files do not support Parquet row-group filters", iceberg.ErrInvalidArgument)
 	}
+	if r.started {
+		return nil, fmt.Errorf("%w: Avro OCF record streams are single-use", iceberg.ErrInvalidArgument)
+	}
+	r.started = true
 	// The FileReader retains its reference until Close. The scanner releases
 	// only the additional reference returned here.
 	r.records.Retain()
