@@ -192,11 +192,11 @@ func icebergAvroType(t iceberg.Type, id int) (any,error) {
 	case iceberg.BinaryType: return "bytes",nil
 	case iceberg.DateType: return map[string]any{"type":"int","logicalType":"date"},nil
 	case iceberg.TimeType: return map[string]any{"type":"long","logicalType":"time-micros"},nil
-	case iceberg.TimestampType: return map[string]any{"type":"long","logicalType":"local-timestamp-micros"},nil
+	case iceberg.TimestampType: return map[string]any{"type":"long","logicalType":"timestamp-micros","adjust-to-utc":false},nil
 	case iceberg.TimestampTzType: return map[string]any{"type":"long","logicalType":"timestamp-micros"},nil
 	case iceberg.FixedType: return map[string]any{"type":"fixed","name":"fixed_"+strconv.Itoa(id),"size":typ.Len()},nil
 	case iceberg.UUIDType: return map[string]any{"type":"fixed","name":"uuid_"+strconv.Itoa(id),"size":16,"logicalType":"uuid"},nil
-	case iceberg.DecimalType: return map[string]any{"type":"bytes","logicalType":"decimal","precision":typ.Precision(),"scale":typ.Scale()},nil
+	case iceberg.DecimalType: return nil,fmt.Errorf("%w: Avro decimal requires fixed-width two\x27s-complement encoding",iceberg.ErrNotImplemented)
 	case *iceberg.StructType: return avroRecordSchema(typ.Fields(),"r_"+strconv.Itoa(id))
 	case *iceberg.ListType:
 		elem,err:=icebergAvroType(typ.Element,typ.ElementID)
