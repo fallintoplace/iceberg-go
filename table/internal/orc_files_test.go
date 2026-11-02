@@ -200,6 +200,7 @@ func TestORCCompressedAndInvalidFile(t *testing.T) {
     defer f.Close()
     require.Error(t,orcValidFooterSignature(f))
     buf := binary.AppendUvarint(nil, 5<<3|0)
+    buf = binary.AppendUvarint(buf, 123)
     _,_,_,_,err = consumeORCProtoField(buf)
     require.NoError(t,err)
 }
