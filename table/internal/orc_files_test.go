@@ -129,7 +129,7 @@ func TestORCWriterWritesIcebergIDsAndNullableStreams(t *testing.T) {
 	stripeFooterLength:=int(orcTestVarint(t,stripes[0],4))
 	stripeFooter:=raw[stripeFooterOffset:stripeFooterOffset+stripeFooterLength]
 	require.Len(t,orcTestFieldBytes(t,stripeFooter,2),3)
-	require.Len(t,orcTestFieldBytes(t,stripeFooter,1),5)
+	require.Len(t,orcTestFieldBytes(t,stripeFooter,1),4)
 }
 
 func TestORCWriterRejectsUnsupportedWithoutCreatingFile(t *testing.T) {
