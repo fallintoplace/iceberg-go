@@ -168,6 +168,49 @@ func TestDiffSnapshotFilesV1EmbeddedManifests(t *testing.T) {
 	require.Equal(t, []string{c.FilePath()}, diffFilePaths(reverse.RemovedDataFiles))
 }
 
+func writeDiffTestManifestListV1(
+	t *testing.T, fs iceio.WriteFileIO, path string,
+	snapshotID int64, manifests []iceberg.ManifestFile,
+) string {
+	t.Helper()
+	out, err := fs.Create(context.Background(), path)
+	require.NoError(t, err)
+	require.NoError(t, iceberg.WriteManifestList(1, out, snapshotID, nil, nil, 0, manifests))
+	require.NoError(t, out.Close())
+	return path
+}
+
+func TestDiffSnapshotFilesV1ManifestLists(t *testing.T) {
+	fs := iceio.NewMemFS()
+	prefix := "mem://diff/v1-lists/"
+	reused := diffTestFile(t, prefix+"reused.parquet", iceberg.EntryContentData)
+	before := diffTestFile(t, prefix+"before.parquet", iceberg.EntryContentData)
+	after := diffTestFile(t, prefix+"after.parquet", iceberg.EntryContentData)
+
+	shared := writeDiffTestManifest(t, fs, 1, prefix+"shared.avro",
+		iceberg.ManifestContentData, 1, []iceberg.DataFile{reused}, nil, nil)
+	oldManifest := writeDiffTestManifest(t, fs, 1, prefix+"old.avro",
+		iceberg.ManifestContentData, 1, []iceberg.DataFile{before}, nil, nil)
+	newManifest := writeDiffTestManifest(t, fs, 1, prefix+"new.avro",
+		iceberg.ManifestContentData, 2, nil, []iceberg.DataFile{after}, nil)
+	fromList := writeDiffTestManifestListV1(t, fs, prefix+"before-list.avro", 1,
+		[]iceberg.ManifestFile{shared, oldManifest})
+	toList := writeDiffTestManifestListV1(t, fs, prefix+"after-list.avro", 2,
+		[]iceberg.ManifestFile{shared, newManifest})
+	now := time.Now().UnixMilli()
+	parent := int64(1)
+	tbl := diffTestTable(t, 1, fs,
+		Snapshot{SnapshotID: 1, TimestampMs: now, ManifestList: fromList},
+		Snapshot{SnapshotID: 2, TimestampMs: now + 1, ParentSnapshotID: &parent, ManifestList: toList})
+
+	diff, err := tbl.DiffSnapshotFiles(context.Background(), 1, 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{after.FilePath()}, diffFilePaths(diff.AddedDataFiles))
+	require.Equal(t, []string{before.FilePath()}, diffFilePaths(diff.RemovedDataFiles))
+	require.Empty(t, diff.AddedDeleteFiles)
+	require.Empty(t, diff.RemovedDeleteFiles)
+}
+
 func TestDiffSnapshotFilesV2ManifestRewriteAndDeleteFiles(t *testing.T) {
 	fs := iceio.NewMemFS()
 	prefix := "mem://diff/v2/"
