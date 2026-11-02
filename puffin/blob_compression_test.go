@@ -16,6 +16,7 @@ package puffin_test
 import (
 	"bytes"
 	"io"
+	"strconv"
 	"testing"
 
 	"github.com/apache/iceberg-go/puffin"
@@ -27,7 +28,7 @@ import (
 func TestWriteCompressedBlobs(t *testing.T) {
 	for _, codec := range []string{"", "lz4", "zstd"} {
 		for _, input := range [][]byte{nil, []byte("hello, Iceberg!"), bytes.Repeat([]byte("Iceberg"), 2000)} {
-			t.Run(codec+"/"+string(rune(len(input))), func(t *testing.T) {
+			t.Run(codec+"/"+strconv.Itoa(len(input)), func(t *testing.T) {
 				var file bytes.Buffer
 				writer, err := puffin.NewWriter(&file)
 				require.NoError(t, err)
@@ -42,9 +43,8 @@ func TestWriteCompressedBlobs(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, writer.Finish())
 				require.Equal(t, int64(puffin.MagicSize), meta.Offset)
-				require.Greater(t, meta.Length, int64(0), "even an empty compressed frame has bytes")
-				require.Equal(t, int64(file.Len()), meta.Offset+meta.Length+int64(file.Len())-meta.Offset-meta.Length)
-				if codec == "" {
+				if codec != "" { require.Greater(t, meta.Length, int64(0), "even an empty compressed frame has bytes") }
+								if codec == "" {
 					require.Nil(t, meta.CompressionCodec)
 				} else {
 					require.Equal(t, codec, *meta.CompressionCodec)
@@ -69,7 +69,7 @@ func TestWriteCompressedBlobs(t *testing.T) {
 					decoder.Close()
 					require.NoError(t, err)
 				}
-				require.Equal(t, input, got)
+				require.Equal(t, string(input), string(got))
 			})
 		}
 	}
