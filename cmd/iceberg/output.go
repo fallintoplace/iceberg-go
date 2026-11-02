@@ -37,6 +37,7 @@ type Output interface {
 	Identifiers([]table.Identifier)
 	DescribeTable(*table.Table)
 	Files(tbl *table.Table, history bool)
+	SnapshotFileDiff(table.SnapshotFileDiff)
 	PlannedFiles(tbl *table.Table, tasks []table.FileScanTask)
 	DescribeProperties(iceberg.Properties)
 	Info(tbl *table.Table)
@@ -398,4 +399,55 @@ func (j jsonOutput) Uuid(u uuid.UUID) {
 
 func (j jsonOutput) Error(err error) {
 	logFatal(err)
+}
+
+// SnapshotFileDiff renders the net changes rather than raw manifest entries.
+func (textOutput) SnapshotFileDiff(diff table.SnapshotFileDiff) {
+	fmt.Printf("Snapshots %d -> %d: %d added, %d removed\n",
+		diff.FromSnapshotID, diff.ToSnapshotID, len(diff.AddedFiles), len(diff.RemovedFiles))
+	for _, file := range diff.RemovedFiles {
+		fmt.Printf("- %s (%s)\n", file.FilePath(), file.ContentType())
+	}
+	for _, file := range diff.AddedFiles {
+		fmt.Printf("+ %s (%s)\n", file.FilePath(), file.ContentType())
+	}
+}
+
+func (j jsonOutput) SnapshotFileDiff(diff table.SnapshotFileDiff) {
+	type contentFile struct {
+		Path          string `json:"path"`
+		Content       string `json:"content"`
+		Format        string `json:"format"`
+		RecordCount   int64  `json:"record-count"`
+		FileSizeBytes int64  `json:"file-size-in-bytes"`
+		SpecID        int32  `json:"spec-id"`
+	}
+	convert := func(files []iceberg.DataFile) []contentFile {
+		out := make([]contentFile, 0, len(files))
+		for _, f := range files {
+			out = append(out, contentFile{
+				Path:          f.FilePath(),
+				Content:       f.ContentType().String(),
+				Format:        string(f.FileFormat()),
+				RecordCount:   f.Count(),
+				FileSizeBytes: f.FileSizeBytes(),
+				SpecID:        f.SpecID(),
+			})
+		}
+		return out
+	}
+	result := struct {
+		FromSnapshotID int64         `json:"from-snapshot-id"`
+		ToSnapshotID   int64         `json:"to-snapshot-id"`
+		AddedFiles     []contentFile `json:"added-files"`
+		RemovedFiles   []contentFile `json:"removed-files"`
+	}{
+		FromSnapshotID: diff.FromSnapshotID,
+		ToSnapshotID:   diff.ToSnapshotID,
+		AddedFiles:     convert(diff.AddedFiles),
+		RemovedFiles:   convert(diff.RemovedFiles),
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+		j.Error(err)
+	}
 }

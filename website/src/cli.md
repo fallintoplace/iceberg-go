@@ -344,3 +344,16 @@ Every write command has multiple layers of protection:
 - **TTY detection** — interactive prompts are only shown when stdout is a terminal.
 - **Ancestor validation** — `rollback` rejects target snapshots that are not in the current branch's history.
 - **Version check** — `upgrade` refuses same-version or downgrade requests.
+
+## Compare snapshot files
+
+The `snapshot-diff` command reports net live-file additions and removals
+between any two retained snapshots. It only reads metadata, not data rows.
+
+```shell
+iceberg snapshot-diff db.table --from 1001 --to 1002
+iceberg snapshot-diff db.table --from 1001 --to 1002 --output json
+```
+
+Reused manifests are not decoded, and files moved during manifest rewrites are
+not reported as changes. In format v1 all returned files are data files.

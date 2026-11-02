@@ -622,3 +622,32 @@ Helpers in [`table/arrow_utils.go`](https://github.com/apache/iceberg-go/blob/ma
 - `VisitArrowSchema[T](sc *arrow.Schema, visitor ArrowSchemaVisitor[T]) (T, error)`
 
 For a writer-side schema (Arrow → Iceberg), the scanner and writers handle conversion automatically as long as your Arrow schema is compatible with the table schema.
+
+
+### Compare the live files in two snapshots
+
+For Iceberg format v1, snapshots refer to immutable Avro manifests and a
+manifest entry is live unless its status is `DELETED`. Compare any two retained
+snapshots, including different branches or snapshots separated by a rollback:
+
+```go
+diff, err := tbl.DiffSnapshotFiles(ctx, sourceSnapshotID, targetSnapshotID)
+if err != nil {
+    return err
+}
+for _, file := range diff.AddedFiles {
+    fmt.Println("added:", file.FilePath())
+}
+for _, file := range diff.RemovedFiles {
+    fmt.Println("removed:", file.FilePath())
+}
+```
+
+This is a **net metadata diff**, not a row-level change feed. Reused manifests
+are skipped, and moving an unchanged data file into a rewritten manifest does
+not count as an addition or removal. The result is sorted by path and content
+type. v1 returns data files; v2/v3 can also return delete files.
+
+See the [Iceberg spec: Snapshots](https://iceberg.apache.org/spec/#snapshots),
+[Manifests](https://iceberg.apache.org/spec/#manifests), and
+[Scan Planning](https://iceberg.apache.org/spec/#scan-planning).

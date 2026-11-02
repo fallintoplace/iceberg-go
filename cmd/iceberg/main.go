@@ -81,6 +81,13 @@ type LocationCmd struct {
 	TableID string `arg:"positional,required" help:"full path to a table"`
 }
 
+// SnapshotDiffCmd compares live content files from two retained snapshots.
+type SnapshotDiffCmd struct {
+	TableID string `arg:"positional,required" help:"full path to a table"`
+	From    int64  `arg:"--from,required" help:"source snapshot ID"`
+	To      int64  `arg:"--to,required" help:"destination snapshot ID"`
+}
+
 type FilesCmd struct {
 	TableID          string `arg:"positional,required" help:"full path to a table"`
 	History          bool   `arg:"--history" help:"show all snapshots"`
@@ -200,6 +207,7 @@ type Args struct {
 	Create           *CreateCmd           `arg:"subcommand:create" help:"create a namespace or table"`
 	Drop             *DropCmd             `arg:"subcommand:drop" help:"drop a namespace or table"`
 	Files            *FilesCmd            `arg:"subcommand:files" help:"list all files of a table"`
+	SnapshotDiff     *SnapshotDiffCmd     `arg:"subcommand:snapshot-diff" help:"compare live files between two snapshots"`
 	Rename           *RenameCmd           `arg:"subcommand:rename" help:"rename a table"`
 	Properties       *PropertiesCmd       `arg:"subcommand:properties" help:"manage properties on tables/namespaces"`
 	Compact          *CompactCmd          `arg:"subcommand:compact" help:"analyze or run bin-pack or sort compaction"`
@@ -347,6 +355,8 @@ func main() {
 		runDrop(ctx, output, cat, args.Drop)
 	case args.Files != nil:
 		runFiles(ctx, output, cat, args.Files)
+	case args.SnapshotDiff != nil:
+		runSnapshotDiff(ctx, output, cat, args.SnapshotDiff)
 	case args.Rename != nil:
 		runRename(ctx, output, cat, args.Rename)
 	case args.Properties != nil:
