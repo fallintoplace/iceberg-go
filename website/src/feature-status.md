@@ -29,6 +29,12 @@ Apache Iceberg Go reads and writes table format versions 1, 2, and 3. The maximu
 
 All V1 features are supported. V1 is the format-version baseline.
 
+Data-file reads support Parquet and Avro object container files. Avro reads
+preserve Iceberg field IDs, but currently decode whole files without physical
+column pruning. Avro array-backed map encodings and partial-file scan tasks are
+not supported; Avro writing is not implemented. Parquet remains the supported
+read/write format for those cases.
+
 ### V2
 
 | Feature | Status |
