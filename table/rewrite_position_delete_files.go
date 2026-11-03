@@ -166,6 +166,9 @@ func (t Table) RewritePositionDeleteFiles(
     txn := t.NewTransaction()
     rewrite := txn.NewRewrite(nil)
     props := maps.Clone(t.Properties())
+    if props == nil {
+        props = make(iceberg.Properties)
+    }
     props[WriteFormatDefaultKey] = string(iceberg.ParquetFile)
     writer, err := newPositionDeleteWriter(t.Location(), wfs, txn.meta, props)
     if err != nil {
