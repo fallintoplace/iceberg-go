@@ -246,34 +246,14 @@ func (t Table) RewritePositionDeleteFiles(
             releasePosDeletes(byPath)
         }
 
-        slices.SortFunc(rows, func(a, b positionDeleteRow) int {
-            if a.path < b.path {
-                return -1
-            }
-            if a.path > b.path {
-                return 1
-            }
-            if a.position < b.position {
-                return -1
-            }
-            if a.position > b.position {
-                return 1
-            }
-            return 0
-        })
-
+        rows = sortUniquePositionDeleteRows(rows)
         if len(rows) > 0 {
             b := array.NewRecordBuilder(compute.GetAllocator(ctx), PositionalDeleteArrowSchema)
             pathBuilder := b.Field(0).(*array.StringBuilder)
             posBuilder := b.Field(1).(*array.Int64Builder)
-            var previous positionDeleteRow
-            for i, row := range rows {
-                if i > 0 && row == previous {
-                    continue
-                }
+            for _, row := range rows {
                 pathBuilder.Append(row.path)
                 posBuilder.Append(row.position)
-                previous = row
             }
             record := b.NewRecordBatch()
             b.Release()
@@ -308,4 +288,23 @@ func (t Table) RewritePositionDeleteFiles(
         return nil, 0, err
     }
     return updated, removed, nil
+}
+
+func sortUniquePositionDeleteRows(rows []positionDeleteRow) []positionDeleteRow {
+    slices.SortFunc(rows, func(a, b positionDeleteRow) int {
+        if a.path < b.path {
+            return -1
+        }
+        if a.path > b.path {
+            return 1
+        }
+        if a.position < b.position {
+            return -1
+        }
+        if a.position > b.position {
+            return 1
+        }
+        return 0
+    })
+    return slices.Compact(rows)
 }
