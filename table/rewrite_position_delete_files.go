@@ -22,6 +22,7 @@ import (
     "maps"
     "slices"
 
+    "github.com/apache/arrow-go/v18/arrow"
     "github.com/apache/arrow-go/v18/arrow/array"
     "github.com/apache/arrow-go/v18/arrow/compute"
     "github.com/apache/iceberg-go"
@@ -45,6 +46,11 @@ type positionDeleteRewriteGroup struct {
     files []iceberg.DataFile
     partition map[int]any
     bytes int64
+}
+
+type positionDeleteLiveFile struct {
+    partition string
+    sequence int64
 }
 
 type positionDeleteRow struct {
@@ -90,7 +96,7 @@ func (t Table) RewritePositionDeleteFiles(
         return nil, 0, err
     }
 
-    live := make(map[string]danglingDataFile)
+    live := make(map[string]positionDeleteLiveFile)
     // Build a snapshot-scoped live-file index. This is independent of
     // removeDanglingDeleteFiles; the two features can merge in either order.
     for _, manifest := range manifests {
@@ -112,7 +118,7 @@ func (t Table) RewritePositionDeleteFiles(
             if err != nil {
                 return nil, 0, fmt.Errorf("data file %s: %w", df.FilePath(), err)
             }
-            live[df.FilePath()] = danglingDataFile{
+            live[df.FilePath()] = positionDeleteLiveFile{
                 partition: partition, sequence: max(int64(0), entry.DataSequenceNumber()),
             }
         }
@@ -261,7 +267,6 @@ func (t Table) RewritePositionDeleteFiles(
             pathBuilder := b.Field(0).(*array.StringBuilder)
             posBuilder := b.Field(1).(*array.Int64Builder)
             var previous positionDeleteRow
-            distinct := 0
             for i, row := range rows {
                 if i > 0 && row == previous {
                     continue
@@ -269,7 +274,6 @@ func (t Table) RewritePositionDeleteFiles(
                 pathBuilder.Append(row.path)
                 posBuilder.Append(row.position)
                 previous = row
-                distinct++
             }
             record := b.NewRecordBatch()
             b.Release()
@@ -283,7 +287,6 @@ func (t Table) RewritePositionDeleteFiles(
             }
             rewrite.AddDeleteFileWithDataSequenceNumber(newFile, key.sequence)
             produced = append(produced, newFile.FilePath())
-            _ = distinct
         }
         for _, df := range group.files {
             rewrite.DeleteFile(df)
