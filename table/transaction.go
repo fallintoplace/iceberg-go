@@ -187,6 +187,39 @@ func (t *Transaction) UpgradeFormatVersion(version int) error {
 	return t.apply([]Update{NewUpgradeFormatVersionUpdate(version)}, nil)
 }
 
+// RollbackToTime stages a rollback of the main branch to its ancestor with
+// the greatest snapshot timestamp strictly before timestampMs. The current
+// snapshot is eligible if it is older than timestampMs. Unlike SnapshotAsOf,
+// this searches the current ancestry, not the table's snapshot history log.
+// The rollback is committed by calling Transaction.Commit.
+func (t *Transaction) RollbackToTime(timestampMs int64) error {
+	current := t.meta.currentSnapshot()
+	if current == nil {
+		return errors.New("cannot rollback: table has no current snapshot")
+	}
+
+	lookup := func(id int64) *Snapshot {
+		snap, _ := t.meta.SnapshotByID(id)
+
+		return snap
+	}
+
+	var targetID, latestTimestamp int64
+	found := false
+	for _, snap := range AncestorsOf(current.SnapshotID, lookup) {
+		if snap.TimestampMs < timestampMs && (!found || snap.TimestampMs > latestTimestamp) {
+			targetID = snap.SnapshotID
+			latestTimestamp = snap.TimestampMs
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("%w: cannot rollback: no ancestor snapshot before %d", iceberg.ErrInvalidArgument, timestampMs)
+	}
+
+	return t.RollbackToSnapshot(targetID)
+}
+
 func (t *Transaction) RollbackToSnapshot(snapshotID int64) error {
 	cs := t.meta.currentSnapshot()
 	if cs == nil {
